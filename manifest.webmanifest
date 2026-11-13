@@ -1,0 +1,17 @@
+{
+  "name": "길담 — 나의 야외 활동 기록",
+  "short_name": "길담",
+  "description": "걷기·달리기·자전거·등산 기록을 지도 위 이야기로 다시 보는 앱",
+  "lang": "ko",
+  "start_url": "./#/record",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f8f6",
+  "theme_color": "#1f8a52",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

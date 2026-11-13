@@ -1,4 +1,5 @@
 // 설정: localStorage 에 JSON 으로 저장. 항상 새 객체를 반환(불변).
+import { TYPE_IDS } from './activity-types.js';
 
 const KEY = 'gildam.settings.v1';
 
@@ -6,7 +7,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   maptilerKey: '',
   weightKg: 65,
   theme: 'system', // system | light | dark
-  defaultType: 'run',
+  defaultType: 'walk',
   maxAccuracy: 30,
   homeHide: Object.freeze({ enabled: false, lat: null, lon: null, radius: 300 }),
 });
@@ -19,7 +20,7 @@ function sanitize(raw) {
     maptilerKey: typeof s.maptilerKey === 'string' ? s.maptilerKey.trim().slice(0, 100) : '',
     weightKg: Number.isFinite(weight) && weight >= 20 && weight <= 250 ? weight : DEFAULT_SETTINGS.weightKg,
     theme: ['system', 'light', 'dark'].includes(s.theme) ? s.theme : 'system',
-    defaultType: ['walk', 'run', 'bike', 'hike'].includes(s.defaultType) ? s.defaultType : DEFAULT_SETTINGS.defaultType,
+    defaultType: TYPE_IDS.includes(s.defaultType) ? s.defaultType : DEFAULT_SETTINGS.defaultType,
     maxAccuracy: DEFAULT_SETTINGS.maxAccuracy,
     homeHide: {
       enabled: Boolean(home.enabled),

@@ -1,11 +1,12 @@
 // 활동 상세: 속도 색상 경로, 요약 통계, 고도 프로필, 1km 구간 표
 import { Chart, registerables } from 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/+esm';
 import { findActivity, saveActivity, deleteActivity } from '../db.js';
-import { ACTIVITY_TYPES, getType } from '../activity-types.js';
+import { ACTIVITY_TYPES, getType, usesSpeed } from '../activity-types.js';
 import { updateActivity } from '../activity.js';
 import { elevationProfile, splits } from '../geo.js';
 import { createMap, drawRoute, addStartEndMarkers, addPhotoMarkers, fitRoute, speedLegend, speedColoredFeatures } from '../map.js';
 import { mountPhotoSection, openLightbox, photoCaption } from './detail-photos.js';
+import { openShareDialog } from './share-dialog.js';
 import { routeSvg } from '../route-svg.js';
 import { toGpx } from '../gpx.js';
 import { loadSettings } from '../settings-store.js';
@@ -16,7 +17,7 @@ Chart.register(...registerables);
 
 function statsGrid(a) {
   const s = a.stats;
-  const isBike = a.type === 'bike';
+  const isBike = usesSpeed(a.type);
   const items = [
     ['거리', fmt.formatDistance(s.distance)],
     ['이동 시간', fmt.formatDuration(Math.round(s.movingTime))],
@@ -25,7 +26,7 @@ function statsGrid(a) {
     ['최고 속도', fmt.formatSpeed(s.maxSpeed)],
     ['누적 상승', fmt.formatElevation(s.elevationGain)],
     ['최고 고도', fmt.formatElevation(s.maxEle)],
-    ['칼로리*', fmt.formatCalories(s.calories)],
+    getType(a.type).met > 0 ? ['칼로리*', fmt.formatCalories(s.calories)] : ['최저 고도', fmt.formatElevation(s.minEle)],
   ];
   return items.map(([k, v]) => `<div class="stat"><span class="stat-value">${v}</span><span class="stat-label">${k}</span></div>`).join('');
 }
@@ -116,6 +117,7 @@ export async function render(root, { params, navigate }) {
     <div data-ref="splits"></div>
     <section data-ref="photos"></section>
     <div class="row actions">
+      <button class="btn btn-secondary" data-action="share">🖼 공유 카드</button>
       <button class="btn btn-secondary" data-action="gpx">⬇ GPX 내보내기</button>
       <button class="btn btn-danger-ghost" data-action="delete">삭제</button>
     </div>
@@ -132,7 +134,8 @@ export async function render(root, { params, navigate }) {
   function drawSummary() {
     $('stats').innerHTML = statsGrid(activity);
     const filtered = activity.filteredCount ? ` GPS 튐으로 판단된 ${activity.filteredCount}개 지점은 제외했습니다.` : '';
-    $('foot').textContent = `* 칼로리는 활동 종류 MET × 체중(${loadSettings().weightKg}kg) × 이동 시간으로 계산한 추정치입니다.${filtered}`;
+    const calNote = t().met > 0 ? `* 칼로리는 활동 종류 MET × 체중(${loadSettings().weightKg}kg) × 이동 시간으로 계산한 추정치입니다.` : '';
+    $('foot').textContent = `${calNote}${filtered}`.trim();
     chart?.destroy();
     chart = elevationChart($('chart'), activity.points, t().color);
     if (!chart) $('chart').parentElement.innerHTML = '<p class="muted">고도 정보가 없습니다.</p>';
@@ -194,7 +197,9 @@ export async function render(root, { params, navigate }) {
 
   root.addEventListener('click', async (e) => {
     const action = e.target.closest('[data-action]')?.dataset.action;
-    if (action === 'gpx') {
+    if (action === 'share') {
+      openShareDialog(activity).catch((err) => toast(`공유 카드를 만들지 못했습니다: ${err?.message ?? err}`, { type: 'error' }));
+    } else if (action === 'gpx') {
       downloadText(`${safeFileName(activity.name)}.gpx`, toGpx(activity), 'application/gpx+xml');
     } else if (action === 'delete') {
       if (!(await confirmDialog(`'${activity.name}' 활동을 삭제할까요? 되돌릴 수 없습니다.`))) return;

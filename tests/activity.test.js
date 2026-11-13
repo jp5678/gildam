@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildActivity, updateActivity, isValidActivity } from '../js/activity.js';
-import { normalizeType, guessType, getType } from '../js/activity-types.js';
+import { normalizeType, guessType, getType, usesSpeed, exerciseOnly } from '../js/activity-types.js';
 import { formatDistance, formatDuration, formatPace, formatSpeed, esc, defaultActivityName } from '../js/format.js';
 import { toGpx, escapeXml } from '../js/gpx.js';
 
@@ -69,6 +69,21 @@ test('normalizeType / guessType / getType', () => {
   assert.equal(guessType({ avgSpeed: 1, elevationGain: 500, distance: 5000 }), 'hike');
   assert.equal(guessType({ avgSpeed: 3, elevationGain: 0, distance: 5000 }), 'run');
   assert.equal(getType('nope').id, 'walk');
+});
+
+test('자동차 종류', () => {
+  assert.equal(normalizeType('driving'), 'car');
+  assert.equal(normalizeType('Car'), 'car');
+  assert.equal(normalizeType('자동차'), 'car');
+  assert.equal(normalizeType('cardio'), null, "'cardio' 는 자동차가 아님");
+  assert.equal(guessType({ avgSpeed: 15, elevationGain: 0, distance: 50000 }), 'car');
+  assert.equal(usesSpeed('car'), true);
+  assert.equal(usesSpeed('bike'), true);
+  assert.equal(usesSpeed('run'), false);
+  assert.deepEqual(exerciseOnly([{ type: 'car' }, { type: 'walk' }]).map((a) => a.type), ['walk']);
+  const a = buildActivity({ id: 'c1', now: T0, points: track(30, { stepDeg: 0.002, dtSec: 5 }), type: 'car', source: 'gps', weightKg: 60 });
+  assert.equal(a.stats.calories, 0);
+  assert.equal(isValidActivity(a), true);
 });
 
 test('format 함수', () => {

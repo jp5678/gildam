@@ -1,6 +1,6 @@
 // 기록 탭: 실시간 GPS 기록 + 파일 가져오기
 import { recorder, wakeLockSupported, geolocationSupported } from '../recorder.js';
-import { ACTIVITY_TYPES, getType } from '../activity-types.js';
+import { ACTIVITY_TYPES, getType, usesSpeed } from '../activity-types.js';
 import { buildActivity } from '../activity.js';
 import { cumulativeDistances } from '../geo.js';
 import { saveActivity, newId, loadDraft, clearDraft } from '../db.js';
@@ -82,7 +82,7 @@ export async function render(root, { navigate }) {
     });
     $('time').textContent = formatDuration(Math.round(snap.elapsed));
     $('dist').textContent = formatDistance(snap.distance);
-    const isBike = selectedType === 'bike';
+    const isBike = usesSpeed(selectedType);
     $('paceLabel').textContent = isBike ? '평균 속도' : '평균 페이스';
     $('pace').textContent = isBike
       ? formatSpeed(snap.movingTime > 0 ? snap.distance / snap.movingTime : NaN)

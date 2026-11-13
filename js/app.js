@@ -1,6 +1,7 @@
 // 앱 진입점: 해시 라우터 + 하단 탭
 import { applyTheme } from './settings-store.js';
 import { toast } from './ui.js';
+import { registerServiceWorker } from './pwa.js';
 
 const ROUTES = [
   { pattern: /^#\/record$/, tab: 'record', load: () => import('./views/record.js') },
@@ -57,3 +58,4 @@ async function route() {
 applyTheme();
 window.addEventListener('hashchange', route);
 route();
+registerServiceWorker();

@@ -6,7 +6,7 @@ import { defaultActivityName } from './format.js';
 /**
  * @typedef {object} Activity
  * @property {string} id
- * @property {'walk'|'run'|'bike'|'hike'} type
+ * @property {'walk'|'run'|'bike'|'hike'|'car'} type
  * @property {string} name
  * @property {'gps'|'gpx'|'tcx'} source
  * @property {number} startTime
