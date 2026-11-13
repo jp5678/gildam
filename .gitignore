@@ -1,0 +1,8 @@
+.DS_Store
+node_modules/
+coverage/
+# 로컬 도구 설정·상태
+.claude/
+docs/.bkit-memory.json
+docs/.pdca-status.json
+__pycache__/

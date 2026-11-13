@@ -1,0 +1,11 @@
+{
+  "name": "gildam",
+  "private": true,
+  "description": "길담 — 야외 활동 기록·리플레이 PWA (빌드 없음, 이 파일은 테스트 실행용)",
+  "type": "module",
+  "scripts": {
+    "test": "node --test --experimental-test-coverage \"tests/*.test.js\"",
+    "serve": "python3 scripts/serve.py 5173",
+    "samples": "node scripts/make-samples.mjs"
+  }
+}

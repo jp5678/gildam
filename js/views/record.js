@@ -1,0 +1,202 @@
+// 기록 탭: 실시간 GPS 기록 + 파일 가져오기
+import { recorder, wakeLockSupported, geolocationSupported } from '../recorder.js';
+import { ACTIVITY_TYPES, getType } from '../activity-types.js';
+import { buildActivity } from '../activity.js';
+import { cumulativeDistances } from '../geo.js';
+import { saveActivity, newId, loadDraft, clearDraft } from '../db.js';
+import { loadSettings } from '../settings-store.js';
+import { createMap, drawRoute, createPositionMarker } from '../map.js';
+import { routeSvg } from '../route-svg.js';
+import { importFiles } from '../importer.js';
+import { formatDistance, formatDuration, formatPace, formatSpeed, esc } from '../format.js';
+import { toast, confirmDialog, pickFiles } from '../ui.js';
+
+const TEMPLATE = `
+<section class="view view-record">
+  <div class="record-map" data-ref="map"><div class="map-placeholder">지도를 불러오는 중…</div></div>
+  <div class="record-panel">
+    <div class="banner" data-ref="draft" hidden></div>
+    <div class="banner banner-warn" data-ref="notice" hidden></div>
+    <div class="chips" data-ref="types" role="radiogroup" aria-label="활동 종류">
+      ${Object.values(ACTIVITY_TYPES)
+        .map((t) => `<button class="chip" role="radio" data-type="${t.id}" style="--chip:${t.color}">${t.icon} ${t.label}</button>`)
+        .join('')}
+    </div>
+    <div class="live-stats">
+      <div><span class="live-value" data-ref="time">0:00</span><span class="live-label">시간</span></div>
+      <div><span class="live-value" data-ref="dist">0 m</span><span class="live-label">거리</span></div>
+      <div><span class="live-value" data-ref="pace">-</span><span class="live-label" data-ref="paceLabel">평균 페이스</span></div>
+    </div>
+    <p class="gps-status" data-ref="gps">GPS 신호 확인 중…</p>
+    <div class="controls" data-ref="controls"></div>
+    <button class="btn btn-ghost btn-block" data-action="import">📂 GPX/TCX 파일 가져오기</button>
+  </div>
+</section>`;
+
+export async function render(root, { navigate }) {
+  root.innerHTML = TEMPLATE;
+  const $ = (name) => root.querySelector(`[data-ref="${name}"]`);
+  let selectedType = recorder.state === 'idle' ? loadSettings().defaultType : recorder.snapshot().type;
+  let map = null;
+  let posMarker = null;
+  let followed = false;
+  let pendingDraft = null;
+  let mapError = null;
+
+  createMap($('map'), { zoom: 15 })
+    .then((m) => {
+      map = m;
+      posMarker = createPositionMarker(map);
+      update(recorder.snapshot());
+    })
+    .catch((err) => {
+      mapError = err.message;
+      $('map').classList.add('map-fallback');
+      update(recorder.snapshot());
+    });
+
+  function showNotice() {
+    const msgs = [];
+    if (!geolocationSupported()) msgs.push('이 브라우저는 위치 기능을 지원하지 않습니다.');
+    if (!window.isSecureContext) msgs.push('위치 기록은 HTTPS 또는 localhost 에서만 동작합니다.');
+    if (!wakeLockSupported()) msgs.push('이 브라우저는 화면 꺼짐 방지를 지원하지 않습니다. 기록 중에는 화면을 켜 두세요 (특히 iOS).');
+    $('notice').hidden = msgs.length === 0;
+    $('notice').innerHTML = msgs.map((m) => `<p>${esc(m)}</p>`).join('');
+  }
+
+  function renderControls(state) {
+    const c = $('controls');
+    if (state === 'idle') c.innerHTML = '<button class="btn btn-primary btn-xl" data-action="start">▶ 기록 시작</button>';
+    else if (state === 'recording')
+      c.innerHTML = '<button class="btn btn-secondary btn-xl" data-action="pause">❚❚ 일시정지</button>';
+    else
+      c.innerHTML = `<button class="btn btn-primary btn-xl" data-action="resume">▶ 계속</button>
+        <button class="btn btn-danger btn-xl" data-action="stop">■ 종료</button>`;
+  }
+
+  function update(snap) {
+    const recording = snap.state !== 'idle';
+    root.querySelectorAll('[data-type]').forEach((b) => {
+      b.setAttribute('aria-checked', String(b.dataset.type === selectedType));
+      b.disabled = recording && b.dataset.type !== selectedType;
+    });
+    $('time').textContent = formatDuration(Math.round(snap.elapsed));
+    $('dist').textContent = formatDistance(snap.distance);
+    const isBike = selectedType === 'bike';
+    $('paceLabel').textContent = isBike ? '평균 속도' : '평균 페이스';
+    $('pace').textContent = isBike
+      ? formatSpeed(snap.movingTime > 0 ? snap.distance / snap.movingTime : NaN)
+      : formatPace(snap.distance > 50 ? snap.movingTime / (snap.distance / 1000) : NaN);
+    const fix = snap.lastFix;
+    const accText = fix ? `GPS 정확도 ±${Math.round(fix.accuracy)}m${fix.accuracy > 30 ? ' (약함 — 기록 제외)' : ''}` : 'GPS 신호 확인 중…';
+    const extra = [snap.state === 'paused' ? '일시정지됨' : null, snap.dropped > 0 ? `튐 지점 ${snap.dropped}개 제외` : null, recording && wakeLockSupported() ? (snap.wakeLock ? '화면 켜짐 유지 중' : '화면 꺼짐 방지 해제됨') : null]
+      .filter(Boolean)
+      .join(' · ');
+    $('gps').textContent = extra ? `${accText} · ${extra}` : accText;
+    $('gps').classList.toggle('weak', Boolean(fix && fix.accuracy > 30));
+    if ($('controls').dataset.state !== snap.state) {
+      $('controls').dataset.state = snap.state;
+      renderControls(snap.state);
+    }
+    if (mapError) drawFallback(snap.points);
+    if (map) {
+      if (snap.points.length > 1) drawRoute(map, snap.points, { colorBySpeed: false, color: getType(selectedType).color });
+      if (fix) {
+        posMarker.update(fix.lon, fix.lat);
+        if (!followed || recording) map.easeTo({ center: [fix.lon, fix.lat], duration: followed ? 500 : 0 });
+        followed = true;
+      }
+    }
+  }
+
+  // WebGL 없이 경로 모양만 SVG 로 표시
+  function drawFallback(points) {
+    const svg = points.length > 1 ? routeSvg(points, { color: getType(selectedType).color }) : '<div class="map-placeholder">기록을 시작하면 경로 모양이 여기에 표시됩니다.</div>';
+    $('map').innerHTML = `${svg}<p class="map-fallback-note">${esc(mapError)}</p>`;
+  }
+
+  async function finish() {
+    const { type, points } = await recorder.stop();
+    if (points.length < 2) {
+      toast('기록된 지점이 부족해 저장하지 않았습니다.', { type: 'warn' });
+      return;
+    }
+    const activity = buildActivity({ id: newId(), now: Date.now(), points, type, source: 'gps', weightKg: loadSettings().weightKg });
+    await saveActivity(activity);
+    toast('활동을 저장했습니다.');
+    navigate(`#/activity/${activity.id}`);
+  }
+
+  async function checkDraft() {
+    if (recorder.state !== 'idle') return;
+    const draft = await loadDraft().catch(() => null);
+    if (!draft || !Array.isArray(draft.points) || draft.points.length === 0) return;
+    const el = $('draft');
+    el.hidden = false;
+    const dist = cumulativeDistances(draft.points).at(-1) ?? 0;
+    el.innerHTML = `<p>마치지 못한 ${esc(getType(draft.type).label)} 기록이 있습니다 (${formatDistance(dist)}).</p>
+      <div class="row"><button class="btn btn-primary" data-action="draft-resume">이어서 기록</button>
+      <button class="btn btn-ghost" data-action="draft-discard">버리기</button></div>`;
+    pendingDraft = draft;
+  }
+
+  const actions = {
+    start: () => recorder.start(selectedType),
+    pause: () => recorder.pause(),
+    resume: () => recorder.resume(),
+    stop: async () => {
+      if (await confirmDialog('기록을 종료하고 저장할까요?')) await finish();
+    },
+    import: async () => {
+      const files = await pickFiles({ accept: '.gpx,.tcx', multiple: true });
+      if (files.length === 0) return;
+      const { saved, failed } = await importFiles(files);
+      failed.forEach((f) => toast(`${f.name}: ${f.reason}`, { type: 'error', duration: 5000 }));
+      if (saved.length === 1) navigate(`#/activity/${saved[0].id}`);
+      else if (saved.length > 1) {
+        toast(`${saved.length}개 활동을 가져왔습니다.`);
+        navigate('#/archive');
+      }
+    },
+    'draft-resume': () => {
+      const draft = pendingDraft;
+      if (!draft) return;
+      pendingDraft = null;
+      $('draft').hidden = true;
+      selectedType = draft.type;
+      recorder.start(draft.type, draft);
+    },
+    'draft-discard': async () => {
+      if (!(await confirmDialog('남은 기록을 버릴까요? 되돌릴 수 없습니다.'))) return;
+      await clearDraft();
+      $('draft').hidden = true;
+    },
+  };
+
+  root.addEventListener('click', (e) => {
+    const typeBtn = e.target.closest('[data-type]');
+    if (typeBtn && !typeBtn.disabled) {
+      selectedType = typeBtn.dataset.type;
+      if (recorder.state !== 'idle') recorder.setType(selectedType);
+      update(recorder.snapshot());
+      return;
+    }
+    const action = e.target.closest('[data-action]')?.dataset.action;
+    if (action && actions[action]) {
+      Promise.resolve(actions[action]()).catch((err) => toast(err?.message ?? String(err), { type: 'error' }));
+    }
+  });
+
+  showNotice();
+  update(recorder.snapshot());
+  checkDraft();
+  const unsubscribe = recorder.subscribe({ onChange: update, onError: (msg) => toast(msg, { type: 'error', duration: 5000 }) });
+  recorder.preview();
+  const ticker = setInterval(() => recorder.state === 'recording' && update(recorder.snapshot()), 1000);
+
+  return () => {
+    clearInterval(ticker);
+    unsubscribe();
+    map?.remove();
+  };
+}
