@@ -92,11 +92,11 @@ export function dayTotals(activities) {
   return map;
 }
 
-/** 월 달력 (월요일 시작). 주 배열, 각 칸은 { key, day } 또는 null */
+/** 월 달력 (일요일 시작). 주 배열, 각 칸은 { key, day } 또는 null */
 export function monthGrid(year, month) {
   const first = new Date(year, month, 1);
   const days = new Date(year, month + 1, 0).getDate();
-  const lead = (first.getDay() + 6) % 7;
+  const lead = first.getDay(); // 0 = 일요일
   const cells = [
     ...Array(lead).fill(null),
     ...Array.from({ length: days }, (_, i) => ({ key: `${year}-${pad(month + 1)}-${pad(i + 1)}`, day: i + 1 })),

@@ -1,7 +1,7 @@
 // 사진 업로드: EXIF 읽기 → 경로 매칭 → 축소 저장. canvas 재인코딩으로 원본 EXIF(위치 등)는 저장본에서 제거됨.
 import exifr from 'https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.esm.mjs';
-import { matchPhoto, parseExifDate } from './photo-match.js';
-import { savePhoto, newId } from './db.js';
+import { matchPhoto, parseExifDate, placeLivePhoto } from './photo-match.js';
+import { savePhoto, newId, findPhotos, deletePhoto } from './db.js';
 
 const MAX_FILE_BYTES = 40 * 1024 * 1024;
 const MAX_FILES_PER_UPLOAD = 30;
@@ -10,6 +10,9 @@ const THUMB_MAX_PX = 240;
 const JPEG_QUALITY = 0.85;
 
 export class PhotoError extends Error {}
+
+/** 기록 중 촬영한 사진을 활동이 저장될 때까지 묶어 두는 임시 활동 id */
+export const DRAFT_ACTIVITY_ID = 'draft:current';
 
 /** EXIF 에서 위치·촬영 시각 읽기 (없으면 null) */
 export async function readPhotoMeta(file) {
@@ -48,31 +51,68 @@ function resize(bitmap, maxPx) {
   );
 }
 
-async function processOne(file, activity) {
+function validateImageFile(file) {
   if (!file.type.startsWith('image/') && !/\.(jpe?g|png|webp|heic|heif)$/i.test(file.name)) throw new PhotoError('이미지 파일이 아닙니다.');
   if (file.size > MAX_FILE_BYTES) throw new PhotoError('파일이 너무 큽니다 (최대 40MB).');
-  const meta = await readPhotoMeta(file);
-  const match = matchPhoto(meta, activity.points);
-  if (!match.ok) throw new PhotoError(match.reason);
+}
+
+/** 축소·재인코딩 후 저장 (원본 EXIF 제거) */
+async function storeImage(file, fields) {
   const bitmap = await decode(file);
   try {
     const [blob, thumb] = await Promise.all([resize(bitmap, FULL_MAX_PX), resize(bitmap, THUMB_MAX_PX)]);
-    return savePhoto({
-      id: newId(),
-      activityId: activity.id,
-      blob,
-      thumb,
-      lat: meta.lat,
-      lon: meta.lon,
-      time: meta.time,
-      index: match.index,
-      method: match.method,
-      name: file.name.slice(0, 120),
-      createdAt: Date.now(),
-    });
+    return savePhoto({ id: newId(), blob, thumb, name: file.name.slice(0, 120), createdAt: Date.now(), ...fields });
   } finally {
     bitmap.close();
   }
+}
+
+async function processOne(file, activity) {
+  validateImageFile(file);
+  const meta = await readPhotoMeta(file);
+  const match = matchPhoto(meta, activity.points);
+  if (!match.ok) throw new PhotoError(match.reason);
+  return storeImage(file, { activityId: activity.id, lat: meta.lat, lon: meta.lon, time: meta.time, index: match.index, method: match.method });
+}
+
+/**
+ * 기록 중 촬영: 카메라 사진은 브라우저가 위치 EXIF 를 지우는 경우가 많아 촬영 순간의 GPS 위치를 사용
+ * @param {File} file
+ * @param {{ lat: number|null, lon: number|null, time: number }} where
+ */
+export async function addLivePhoto(file, where) {
+  validateImageFile(file);
+  return storeImage(file, {
+    activityId: DRAFT_ACTIVITY_ID,
+    lat: Number.isFinite(where.lat) ? where.lat : null,
+    lon: Number.isFinite(where.lon) ? where.lon : null,
+    time: where.time,
+    index: 0,
+    method: Number.isFinite(where.lat) ? 'gps' : 'time',
+  });
+}
+
+export async function countDraftPhotos() {
+  return (await findPhotos(DRAFT_ACTIVITY_ID)).length;
+}
+
+/** 기록이 저장되면 임시 사진을 경로에 배치해 활동에 연결. 연결한 장수 반환 */
+export async function attachDraftPhotos(activity) {
+  const drafts = await findPhotos(DRAFT_ACTIVITY_ID);
+  await Promise.all(
+    drafts.map((p) => {
+      const { index, method } = placeLivePhoto(p, activity.points);
+      return savePhoto({ ...p, activityId: activity.id, index, method });
+    }),
+  );
+  return drafts.length;
+}
+
+/** 기록을 버리면 임시 사진도 삭제 */
+export async function discardDraftPhotos() {
+  const drafts = await findPhotos(DRAFT_ACTIVITY_ID);
+  await Promise.all(drafts.map((p) => deletePhoto(p.id)));
+  return drafts.length;
 }
 
 /**

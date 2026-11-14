@@ -44,7 +44,7 @@ export async function render(root) {
   root.innerHTML = `
   <section class="view view-stats">
     <header class="view-header"><h1>통계</h1></header>
-    <div class="chips chips-scroll">
+    <div class="chips chips-row">
       <button class="chip" data-type="all">전체</button>
       ${Object.values(ACTIVITY_TYPES).map((t) => `<button class="chip" data-type="${t.id}" style="--chip:${t.color}">${t.icon} ${t.label}</button>`).join('')}
     </div>

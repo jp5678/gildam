@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseExifDate, nearestPointIndex, indexAtTime, matchPhoto, isValidPhotoRecord } from '../js/photo-match.js';
+import { parseExifDate, nearestPointIndex, indexAtTime, matchPhoto, isValidPhotoRecord, placeLivePhoto } from '../js/photo-match.js';
 import { bearing, lerpAngle, baseDurationSec, createTrack } from '../js/replay-math.js';
 
 const T0 = Date.UTC(2026, 9, 11, 0, 0, 0); // 09:00 KST
@@ -98,4 +98,12 @@ test('isValidPhotoRecord', () => {
   assert.equal(isValidPhotoRecord({ ...ok, method: 'magic' }), false);
   assert.equal(isValidPhotoRecord({ ...ok, blob: 42 }), false);
   assert.equal(isValidPhotoRecord(null), false);
+});
+
+test('placeLivePhoto: 기록 중 사진은 항상 경로 위에 배치', () => {
+  assert.deepEqual(placeLivePhoto({ lat: 37.5, lon: 127.0071, time: T0 }, route), { index: 7, method: 'gps' });
+  assert.deepEqual(placeLivePhoto({ lat: null, lon: null, time: T0 + 4 * 60_000 }, route), { index: 4, method: 'time' });
+  // 위치 실패·시각 범위 밖이어도 가장 가까운 시각 지점(끝)
+  assert.deepEqual(placeLivePhoto({ lat: 38, lon: 127, time: T0 + 86_400_000 }, route), { index: 10, method: 'time' });
+  assert.deepEqual(placeLivePhoto({ lat: null, lon: null, time: null }, route), { index: 10, method: 'time' });
 });

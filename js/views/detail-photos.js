@@ -40,9 +40,9 @@ export async function mountPhotoSection(el, getActivity, onChange) {
   el.innerHTML = `
     <div class="section-head">
       <h2>사진</h2>
-      <button class="btn btn-secondary btn-sm" data-action="add-photos">📷 사진 추가</button>
+      <button class="btn btn-secondary btn-sm" data-action="add-photos">🖼 사진 추가</button>
     </div>
-    <p class="hint">사진의 위치(EXIF GPS)로 경로에 배치하고, 위치가 없으면 촬영 시각으로 배치합니다. 사진은 이 기기에만 저장되며 원본의 위치 정보는 저장본에서 제거됩니다.</p>
+    <p class="hint">갤러리 사진은 위치(EXIF GPS)로 경로에 배치하고, 위치가 없으면 촬영 시각으로 배치합니다. 기록 중에는 기록 탭의 📷 버튼으로 바로 찍을 수 있습니다. 사진은 이 기기에만 저장되며 원본의 위치 정보는 저장본에서 제거됩니다.</p>
     <p class="hint" data-ref="progress" hidden></p>
     <div class="photo-grid" data-ref="grid"></div>`;
   const grid = el.querySelector('[data-ref="grid"]');

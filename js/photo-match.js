@@ -76,6 +76,20 @@ export function matchPhoto(photo, points) {
   return { ok: false, reason: '사진에 위치·촬영 시각 정보(EXIF)가 없습니다.' };
 }
 
+/**
+ * 기록 중 촬영한 사진을 완성된 경로에 배치. 사진 시점의 GPS 가 있으므로 실패 없이 항상 위치를 정함:
+ * 위치·시각 매칭 → 시각이 범위 밖이면 가장 가까운 시각 지점 → 그것도 없으면 마지막 지점
+ * @returns {{ index: number, method: 'gps'|'time' }}
+ */
+export function placeLivePhoto(photo, points) {
+  const match = matchPhoto(photo, points);
+  if (match.ok) return { index: match.index, method: match.method };
+  if (Number.isFinite(photo.time) && points.length > 0 && points.every((p) => p.time != null)) {
+    return { index: indexAtTime(points, photo.time), method: 'time' };
+  }
+  return { index: Math.max(0, points.length - 1), method: 'time' };
+}
+
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 const isNumOrNull = (v) => v === null || isNum(v);
 

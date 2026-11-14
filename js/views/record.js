@@ -8,6 +8,7 @@ import { loadSettings } from '../settings-store.js';
 import { createMap, drawRoute, createPositionMarker } from '../map.js';
 import { routeSvg } from '../route-svg.js';
 import { importFiles } from '../importer.js';
+import { addLivePhoto, countDraftPhotos, attachDraftPhotos, discardDraftPhotos } from '../photos.js';
 import { formatDistance, formatDuration, formatPace, formatSpeed, esc } from '../format.js';
 import { toast, confirmDialog, pickFiles } from '../ui.js';
 
@@ -42,6 +43,7 @@ export async function render(root, { navigate }) {
   let followed = false;
   let pendingDraft = null;
   let mapError = null;
+  let photoCount = 0;
 
   createMap($('map'), { zoom: 15 })
     .then((m) => {
@@ -64,14 +66,29 @@ export async function render(root, { navigate }) {
     $('notice').innerHTML = msgs.map((m) => `<p>${esc(m)}</p>`).join('');
   }
 
+  const photoButton = () =>
+    `<button class="btn btn-secondary btn-photo" data-action="photo" aria-label="사진 찍기">📷 사진${photoCount ? ` ${photoCount}` : ''}</button>`;
+
   function renderControls(state) {
     const c = $('controls');
     if (state === 'idle') c.innerHTML = '<button class="btn btn-primary btn-xl" data-action="start">▶ 기록 시작</button>';
     else if (state === 'recording')
-      c.innerHTML = '<button class="btn btn-secondary btn-xl" data-action="pause">❚❚ 일시정지</button>';
+      c.innerHTML = `<button class="btn btn-secondary btn-xl" data-action="pause">❚❚ 일시정지</button>${photoButton()}`;
     else
       c.innerHTML = `<button class="btn btn-primary btn-xl" data-action="resume">▶ 계속</button>
-        <button class="btn btn-danger btn-xl" data-action="stop">■ 종료</button>`;
+        <button class="btn btn-danger btn-xl" data-action="stop">■ 종료</button>${photoButton()}`;
+  }
+
+  /** 기록 중 촬영: 촬영 순간의 GPS 위치(없으면 마지막 기록 지점)로 저장 */
+  async function takePhoto() {
+    const [file] = await pickFiles({ accept: 'image/*', capture: 'environment' });
+    if (!file) return;
+    const snap = recorder.snapshot();
+    const fix = snap.lastFix ?? snap.points.at(-1) ?? null;
+    await addLivePhoto(file, { lat: fix?.lat ?? null, lon: fix?.lon ?? null, time: Date.now() });
+    photoCount += 1;
+    renderControls(recorder.state);
+    toast(`사진을 저장했습니다 (${photoCount}장). 기록을 마치면 경로에 표시됩니다.`);
   }
 
   function update(snap) {
@@ -118,12 +135,19 @@ export async function render(root, { navigate }) {
   async function finish() {
     const { type, points } = await recorder.stop();
     if (points.length < 2) {
-      toast('기록된 지점이 부족해 저장하지 않았습니다.', { type: 'warn' });
+      const removed = await discardDraftPhotos().catch(() => 0);
+      toast(`기록된 지점이 부족해 저장하지 않았습니다.${removed ? ` (사진 ${removed}장도 삭제)` : ''}`, { type: 'warn' });
+      photoCount = 0;
       return;
     }
     const activity = buildActivity({ id: newId(), now: Date.now(), points, type, source: 'gps', weightKg: loadSettings().weightKg });
     await saveActivity(activity);
-    toast('활동을 저장했습니다.');
+    const attached = await attachDraftPhotos(activity).catch((err) => {
+      toast(`사진을 연결하지 못했습니다: ${err?.message ?? err}`, { type: 'error' });
+      return 0;
+    });
+    photoCount = 0;
+    toast(attached ? `활동과 사진 ${attached}장을 저장했습니다.` : '활동을 저장했습니다.');
     navigate(`#/activity/${activity.id}`);
   }
 
@@ -141,7 +165,13 @@ export async function render(root, { navigate }) {
   }
 
   const actions = {
-    start: () => recorder.start(selectedType),
+    photo: takePhoto,
+    start: async () => {
+      // 이전에 버려지지 않은 임시 사진이 새 기록에 섞이지 않도록 정리
+      if (!pendingDraft) await discardDraftPhotos().catch(() => 0);
+      photoCount = 0;
+      recorder.start(selectedType);
+    },
     pause: () => recorder.pause(),
     resume: () => recorder.resume(),
     stop: async () => {
@@ -169,6 +199,8 @@ export async function render(root, { navigate }) {
     'draft-discard': async () => {
       if (!(await confirmDialog('남은 기록을 버릴까요? 되돌릴 수 없습니다.'))) return;
       await clearDraft();
+      await discardDraftPhotos();
+      photoCount = 0;
       $('draft').hidden = true;
     },
   };
@@ -188,6 +220,14 @@ export async function render(root, { navigate }) {
   });
 
   showNotice();
+  if (recorder.state !== 'idle') {
+    countDraftPhotos()
+      .then((n) => {
+        photoCount = n;
+        renderControls(recorder.state);
+      })
+      .catch(() => {});
+  }
   update(recorder.snapshot());
   checkDraft();
   const unsubscribe = recorder.subscribe({ onChange: update, onError: (msg) => toast(msg, { type: 'error', duration: 5000 }) });

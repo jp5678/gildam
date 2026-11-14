@@ -34,12 +34,14 @@ export function downloadBlob(filename, blob) {
 }
 
 /** 숨김 file input 을 열고 선택된 파일 목록을 반환 */
-export function pickFiles({ accept, multiple = false }) {
+/** capture: 'environment'(후면 카메라) 를 주면 휴대폰에서 카메라가 바로 열림 */
+export function pickFiles({ accept, multiple = false, capture = null }) {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = accept;
     input.multiple = multiple;
+    if (capture) input.setAttribute('capture', capture);
     input.addEventListener('change', () => resolve(Array.from(input.files ?? [])), { once: true });
     input.click();
   });

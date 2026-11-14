@@ -2,7 +2,7 @@
 import { dayTotals, monthGrid, heatLevel, dayKey } from '../stats-math.js';
 import { formatDistance } from '../format.js';
 
-const WEEKDAYS = Object.freeze(['월', '화', '수', '목', '금', '토', '일']);
+const WEEKDAYS = Object.freeze(['일', '월', '화', '수', '목', '금', '토']);
 
 /**
  * @param {object[]} activities 전체 활동
@@ -19,12 +19,13 @@ export function calendarHtml(activities, { year, month, selected }) {
   const sumCount = monthTotals.reduce((s, t) => s + t.count, 0);
   const today = dayKey(Date.now());
 
-  const cell = (c) => {
+  const cell = (c, col) => {
     if (!c) return '<span class="cal-cell cal-empty"></span>';
     const t = totalsByDay.get(c.key);
     const level = heatLevel(t?.distance ?? 0, max);
     const title = t ? `${c.key} · ${t.count}회 · ${formatDistance(t.distance)}` : c.key;
-    const cls = ['cal-cell', `lv${level}`, c.key === today ? 'today' : '', c.key === selected ? 'selected' : ''].join(' ');
+    const weekend = col === 0 ? 'sun' : col === 6 ? 'sat' : '';
+    const cls = ['cal-cell', `lv${level}`, weekend, c.key === today ? 'today' : '', c.key === selected ? 'selected' : ''].join(' ');
     return t
       ? `<button class="${cls}" data-day="${c.key}" title="${title}" aria-label="${title}" aria-pressed="${c.key === selected}">${c.day}</button>`
       : `<span class="${cls}" title="${title}">${c.day}</span>`;
@@ -38,7 +39,7 @@ export function calendarHtml(activities, { year, month, selected }) {
     </div>
     <p class="cal-sum">${sumCount}회 · ${formatDistance(sumDist)}</p>
     <div class="cal-grid" role="grid">
-      ${WEEKDAYS.map((w) => `<span class="cal-wd">${w}</span>`).join('')}
-      ${grid.flat().map(cell).join('')}
+      ${WEEKDAYS.map((w, i) => `<span class="cal-wd ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</span>`).join('')}
+      ${grid.flat().map((c, i) => cell(c, i % 7)).join('')}
     </div>`;
 }

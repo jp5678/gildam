@@ -74,10 +74,11 @@ test('dayTotals: 같은 날 합산, 종류 중복 제거', () => {
   assert.deepEqual(m.get('2026-11-12'), { distance: 15000, count: 3, types: ['run', 'walk'] });
 });
 
-test('monthGrid: 2026년 11월은 일요일 시작 → 월요일 기준 6칸 앞 비움', () => {
+test('monthGrid: 일요일 시작 — 2026년 11월 1일(일)은 첫 칸, 12월 1일(화)은 앞 2칸 비움', () => {
   const g = monthGrid(2026, 10);
-  assert.equal(g[0].filter((c) => c === null).length, 6);
-  assert.equal(g[0][6].key, '2026-11-01');
+  assert.equal(g[0][0].key, '2026-11-01');
+  const dec = monthGrid(2026, 11);
+  assert.deepEqual(dec[0].slice(0, 3).map((c) => c?.key ?? null), [null, null, '2026-12-01']);
   assert.equal(g.flat().filter(Boolean).length, 30);
   assert.ok(g.every((w) => w.length === 7));
 });

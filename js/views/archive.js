@@ -47,13 +47,13 @@ export async function render(root, { navigate }) {
       <button class="btn btn-ghost btn-sm" data-action="import">📂 가져오기</button>
     </header>
     <div class="calendar card" data-ref="calendar" hidden></div>
-    <div class="chips chips-scroll">
+    <div class="chips chips-row">
       <button class="chip" data-filter="all">전체</button>
       ${Object.values(ACTIVITY_TYPES)
         .map((t) => `<button class="chip" data-filter="${t.id}" style="--chip:${t.color}">${t.icon} ${t.label}</button>`)
         .join('')}
     </div>
-    <div class="chips chips-scroll">
+    <div class="chips chips-row">
       ${PERIODS.map(([id, label]) => `<button class="chip chip-sm" data-period="${id}">${label}</button>`).join('')}
     </div>
     <p class="list-summary" data-ref="summary"></p>
