@@ -118,7 +118,14 @@ test('personalRecords', () => {
   const run = act('r', '2026-11-01T07:00:00', { points: track(60) }); // 약 6.6km
   const longRun = act('r2', '2026-11-02T07:00:00', { distance: 21000, movingTime: 7000, points: track(10) });
   const bike = act('b', '2026-11-03T07:00:00', { type: 'bike', distance: 30000, avgSpeed: 7, elevationGain: 300 });
-  const recs = Object.fromEntries(personalRecords([run, longRun, bike]).map((r) => [r.id, r]));
+  const car = act('c', '2026-11-04T07:00:00', { type: 'car', distance: 300000, movingTime: 12000, avgSpeed: 25, elevationGain: 900 });
+  const recs = Object.fromEntries(personalRecords([run, longRun, bike, car]).map((r) => [r.id, r]));
+  // 운동 기록은 자동차를 빼고 계산, 자동차 기록은 따로
+  assert.equal(recs.carLongest.activityId, 'c');
+  assert.equal(recs.carTime.value, 12000);
+  assert.equal(recs.carSpeed.value, 25);
+  assert.equal(recs.carLongest.group, 'car');
+  assert.equal(recs.longest.group, 'exercise');
   assert.equal(recs.longest.activityId, 'b');
   assert.equal(recs.longestTime.activityId, 'r2');
   assert.equal(recs.climb.value, 300);

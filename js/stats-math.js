@@ -1,5 +1,9 @@
 // 통계 집계 (순수 함수). 날짜 경계는 기기의 현지 시간 기준, 주는 월요일 시작.
 import { cumulativeDistances } from './geo.js';
+import { ACTIVITY_TYPES } from './activity-types.js';
+
+// 운동 종류(자동차 제외) — 기본 개인 기록은 이 종류로만 계산
+const EXERCISE_TYPES = Object.freeze(Object.values(ACTIVITY_TYPES).filter((t) => t.exercise).map((t) => t.id));
 
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -138,19 +142,23 @@ export function bestEffort(points, dist) {
   return Number.isFinite(best) ? best : null;
 }
 
+// group: 'exercise' 운동 기록 / 'car' 자동차 기록 (화면에서 나눠 표시)
 const RECORD_DEFS = Object.freeze([
-  { id: 'longest', label: '최장 거리', pick: (a) => a.stats.distance, better: 'max', kind: 'distance' },
-  { id: 'longestTime', label: '최장 이동 시간', pick: (a) => a.stats.movingTime, better: 'max', kind: 'duration' },
-  { id: 'climb', label: '최대 누적 상승', pick: (a) => a.stats.elevationGain, better: 'max', kind: 'elevation' },
-  { id: 'run1k', label: '달리기 1km 최고 기록', types: ['run'], pick: (a) => bestEffort(a.points, 1000), better: 'min', kind: 'duration' },
-  { id: 'run5k', label: '달리기 5km 최고 기록', types: ['run'], pick: (a) => bestEffort(a.points, 5000), better: 'min', kind: 'duration' },
-  { id: 'run10k', label: '달리기 10km 최고 기록', types: ['run'], pick: (a) => bestEffort(a.points, 10000), better: 'min', kind: 'duration' },
-  { id: 'bikeSpeed', label: '자전거 최고 평균 속도(10km 이상)', types: ['bike'], pick: (a) => (a.stats.distance >= 10000 ? a.stats.avgSpeed : null), better: 'max', kind: 'speed' },
+  { id: 'longest', group: 'exercise', label: '최장 거리', types: EXERCISE_TYPES, pick: (a) => a.stats.distance, better: 'max', kind: 'distance' },
+  { id: 'longestTime', group: 'exercise', label: '최장 이동 시간', types: EXERCISE_TYPES, pick: (a) => a.stats.movingTime, better: 'max', kind: 'duration' },
+  { id: 'climb', group: 'exercise', label: '최대 누적 상승', types: EXERCISE_TYPES, pick: (a) => a.stats.elevationGain, better: 'max', kind: 'elevation' },
+  { id: 'run1k', group: 'exercise', label: '달리기 1km 최고 기록', types: ['run'], pick: (a) => bestEffort(a.points, 1000), better: 'min', kind: 'duration' },
+  { id: 'run5k', group: 'exercise', label: '달리기 5km 최고 기록', types: ['run'], pick: (a) => bestEffort(a.points, 5000), better: 'min', kind: 'duration' },
+  { id: 'run10k', group: 'exercise', label: '달리기 10km 최고 기록', types: ['run'], pick: (a) => bestEffort(a.points, 10000), better: 'min', kind: 'duration' },
+  { id: 'bikeSpeed', group: 'exercise', label: '자전거 최고 평균 속도(10km 이상)', types: ['bike'], pick: (a) => (a.stats.distance >= 10000 ? a.stats.avgSpeed : null), better: 'max', kind: 'speed' },
+  { id: 'carLongest', group: 'car', label: '최장 운전 거리', types: ['car'], pick: (a) => a.stats.distance, better: 'max', kind: 'distance' },
+  { id: 'carTime', group: 'car', label: '최장 운전 시간', types: ['car'], pick: (a) => a.stats.movingTime, better: 'max', kind: 'duration' },
+  { id: 'carSpeed', group: 'car', label: '자동차 최고 평균 속도(10km 이상)', types: ['car'], pick: (a) => (a.stats.distance >= 10000 ? a.stats.avgSpeed : null), better: 'max', kind: 'speed' },
 ]);
 
 /**
  * 개인 최고 기록
- * @returns {{ id: string, label: string, kind: string, value: number, activityId: string, startTime: number, name: string }[]}
+ * @returns {{ id: string, group: 'exercise'|'car', label: string, kind: string, value: number, activityId: string, startTime: number, name: string }[]}
  */
 export function personalRecords(activities) {
   return RECORD_DEFS.flatMap((def) => {
@@ -160,6 +168,6 @@ export function personalRecords(activities) {
       .filter(({ v }) => Number.isFinite(v) && v > 0);
     if (candidates.length === 0) return [];
     const top = candidates.reduce((b, c) => ((def.better === 'max' ? c.v > b.v : c.v < b.v) ? c : b));
-    return [{ id: def.id, label: def.label, kind: def.kind, value: top.v, activityId: top.a.id, startTime: top.a.startTime, name: top.a.name }];
+    return [{ id: def.id, group: def.group, label: def.label, kind: def.kind, value: top.v, activityId: top.a.id, startTime: top.a.startTime, name: top.a.name }];
   });
 }
