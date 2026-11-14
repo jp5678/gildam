@@ -9,6 +9,8 @@ import { createMap, drawRoute, createPositionMarker } from '../map.js';
 import { routeSvg } from '../route-svg.js';
 import { importFiles } from '../importer.js';
 import { addLivePhoto, countDraftPhotos, attachDraftPhotos, discardDraftPhotos } from '../photos.js';
+import { addLiveNote, countDraftNotes, attachDraftNotes, discardDraftNotes } from '../notes.js';
+import { openNoteEditor } from './note-dialog.js';
 import { formatDistance, formatDuration, formatPace, formatSpeed, esc } from '../format.js';
 import { toast, confirmDialog, pickFiles } from '../ui.js';
 
@@ -30,6 +32,7 @@ const TEMPLATE = `
     </div>
     <p class="gps-status" data-ref="gps">GPS 신호 확인 중…</p>
     <div class="controls" data-ref="controls"></div>
+    <div class="controls-extra" data-ref="extra" hidden></div>
     <button class="btn btn-ghost btn-block" data-action="import">📂 GPX/TCX 파일 가져오기</button>
   </div>
 </section>`;
@@ -44,6 +47,7 @@ export async function render(root, { navigate }) {
   let pendingDraft = null;
   let mapError = null;
   let photoCount = 0;
+  let noteCount = 0;
 
   createMap($('map'), { zoom: 15 })
     .then((m) => {
@@ -66,29 +70,62 @@ export async function render(root, { navigate }) {
     $('notice').innerHTML = msgs.map((m) => `<p>${esc(m)}</p>`).join('');
   }
 
-  const photoButton = () =>
-    `<button class="btn btn-secondary btn-photo" data-action="photo" aria-label="사진 찍기">📷 사진${photoCount ? ` ${photoCount}` : ''}</button>`;
+  const countLabel = (n) => (n ? ` ${n}` : '');
+
+  // 기록·일시정지 중에만 보이는 사진·메모 버튼 줄
+  function renderExtra(state) {
+    const el = $('extra');
+    el.hidden = state === 'idle';
+    el.innerHTML =
+      state === 'idle'
+        ? ''
+        : `<button class="btn btn-secondary" data-action="photo" aria-label="사진 찍기">📷 사진${countLabel(photoCount)}</button>
+           <button class="btn btn-secondary" data-action="note" aria-label="메모 남기기">📝 메모${countLabel(noteCount)}</button>`;
+  }
 
   function renderControls(state) {
     const c = $('controls');
     if (state === 'idle') c.innerHTML = '<button class="btn btn-primary btn-xl" data-action="start">▶ 기록 시작</button>';
-    else if (state === 'recording')
-      c.innerHTML = `<button class="btn btn-secondary btn-xl" data-action="pause">❚❚ 일시정지</button>${photoButton()}`;
+    else if (state === 'recording') c.innerHTML = '<button class="btn btn-secondary btn-xl" data-action="pause">❚❚ 일시정지</button>';
     else
       c.innerHTML = `<button class="btn btn-primary btn-xl" data-action="resume">▶ 계속</button>
-        <button class="btn btn-danger btn-xl" data-action="stop">■ 종료</button>${photoButton()}`;
+        <button class="btn btn-danger btn-xl" data-action="stop">■ 종료</button>`;
+    renderExtra(state);
+  }
+
+  /** 지금 위치 (없으면 마지막 기록 지점) */
+  function currentPlace() {
+    const snap = recorder.snapshot();
+    const fix = snap.lastFix ?? snap.points.at(-1) ?? null;
+    return { lat: fix?.lat ?? null, lon: fix?.lon ?? null, time: Date.now() };
   }
 
   /** 기록 중 촬영: 촬영 순간의 GPS 위치(없으면 마지막 기록 지점)로 저장 */
   async function takePhoto() {
     const [file] = await pickFiles({ accept: 'image/*', capture: 'environment' });
     if (!file) return;
-    const snap = recorder.snapshot();
-    const fix = snap.lastFix ?? snap.points.at(-1) ?? null;
-    await addLivePhoto(file, { lat: fix?.lat ?? null, lon: fix?.lon ?? null, time: Date.now() });
+    await addLivePhoto(file, currentPlace());
     photoCount += 1;
-    renderControls(recorder.state);
+    renderExtra(recorder.state);
     toast(`사진을 저장했습니다 (${photoCount}장). 기록을 마치면 경로에 표시됩니다.`);
+  }
+
+  /** 기록 중 메모: 입력창을 연 순간의 위치로 저장 (입력하는 동안 이동해도 위치가 바뀌지 않게) */
+  async function takeNote() {
+    const where = currentPlace();
+    const result = await openNoteEditor({ title: '📝 지금 위치에 메모' });
+    if (!result) return;
+    await addLiveNote(result.text, where);
+    noteCount += 1;
+    renderExtra(recorder.state);
+    toast(`메모를 저장했습니다 (${noteCount}개). 기록을 마치면 경로에 표시됩니다.`);
+  }
+
+  async function discardDrafts() {
+    const [photos, notes] = await Promise.all([discardDraftPhotos().catch(() => 0), discardDraftNotes().catch(() => 0)]);
+    photoCount = 0;
+    noteCount = 0;
+    return { photos, notes };
   }
 
   function update(snap) {
@@ -135,19 +172,23 @@ export async function render(root, { navigate }) {
   async function finish() {
     const { type, points } = await recorder.stop();
     if (points.length < 2) {
-      const removed = await discardDraftPhotos().catch(() => 0);
-      toast(`기록된 지점이 부족해 저장하지 않았습니다.${removed ? ` (사진 ${removed}장도 삭제)` : ''}`, { type: 'warn' });
-      photoCount = 0;
+      const removed = await discardDrafts();
+      const extra = [removed.photos ? `사진 ${removed.photos}장` : null, removed.notes ? `메모 ${removed.notes}개` : null].filter(Boolean);
+      toast(`기록된 지점이 부족해 저장하지 않았습니다.${extra.length ? ` (${extra.join('·')}도 삭제)` : ''}`, { type: 'warn' });
       return;
     }
     const activity = buildActivity({ id: newId(), now: Date.now(), points, type, source: 'gps', weightKg: loadSettings().weightKg });
     await saveActivity(activity);
-    const attached = await attachDraftPhotos(activity).catch((err) => {
-      toast(`사진을 연결하지 못했습니다: ${err?.message ?? err}`, { type: 'error' });
-      return 0;
-    });
+    const attach = (fn, label) =>
+      fn(activity).catch((err) => {
+        toast(`${label}를 연결하지 못했습니다: ${err?.message ?? err}`, { type: 'error' });
+        return 0;
+      });
+    const [photos, notes] = await Promise.all([attach(attachDraftPhotos, '사진'), attach(attachDraftNotes, '메모')]);
     photoCount = 0;
-    toast(attached ? `활동과 사진 ${attached}장을 저장했습니다.` : '활동을 저장했습니다.');
+    noteCount = 0;
+    const extra = [photos ? `사진 ${photos}장` : null, notes ? `메모 ${notes}개` : null].filter(Boolean);
+    toast(extra.length ? `활동과 ${extra.join('·')}를 저장했습니다.` : '활동을 저장했습니다.');
     navigate(`#/activity/${activity.id}`);
   }
 
@@ -166,10 +207,10 @@ export async function render(root, { navigate }) {
 
   const actions = {
     photo: takePhoto,
+    note: takeNote,
     start: async () => {
-      // 이전에 버려지지 않은 임시 사진이 새 기록에 섞이지 않도록 정리
-      if (!pendingDraft) await discardDraftPhotos().catch(() => 0);
-      photoCount = 0;
+      // 이전에 버려지지 않은 임시 사진·메모가 새 기록에 섞이지 않도록 정리
+      if (!pendingDraft) await discardDrafts();
       recorder.start(selectedType);
     },
     pause: () => recorder.pause(),
@@ -199,8 +240,7 @@ export async function render(root, { navigate }) {
     'draft-discard': async () => {
       if (!(await confirmDialog('남은 기록을 버릴까요? 되돌릴 수 없습니다.'))) return;
       await clearDraft();
-      await discardDraftPhotos();
-      photoCount = 0;
+      await discardDrafts();
       $('draft').hidden = true;
     },
   };
@@ -221,10 +261,11 @@ export async function render(root, { navigate }) {
 
   showNotice();
   if (recorder.state !== 'idle') {
-    countDraftPhotos()
-      .then((n) => {
-        photoCount = n;
-        renderControls(recorder.state);
+    Promise.all([countDraftPhotos(), countDraftNotes()])
+      .then(([photos, notes]) => {
+        photoCount = photos;
+        noteCount = notes;
+        renderExtra(recorder.state);
       })
       .catch(() => {});
   }

@@ -235,3 +235,21 @@ export function addPhotoMarkers(map, photos, points, urls, onClick) {
   });
   return () => markers.forEach((m) => m.remove());
 }
+
+/** 메모 마커 (📝). onClick(note) 호출. 제거 함수 반환 */
+export function addNoteMarkers(map, notes, points, onClick) {
+  const markers = notes.map((note) => {
+    const p = points[Math.min(note.index, points.length - 1)];
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'note-marker';
+    el.textContent = '📝';
+    el.setAttribute('aria-label', '메모 보기');
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onClick(note);
+    });
+    return new window.maplibregl.Marker({ element: el }).setLngLat(toCoord(p)).addTo(map);
+  });
+  return () => markers.forEach((m) => m.remove());
+}

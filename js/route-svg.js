@@ -44,13 +44,22 @@ function photoMarker(ph, [x, y]) {
   </g>`;
 }
 
+// 메모 지점의 노란 원 + 📝 (클릭 시 data-note-id 로 식별)
+function noteMarker(n, [x, y]) {
+  return `<g class="svg-note" data-note-id="${attr(n.id)}" role="button" tabindex="0" aria-label="메모 보기">
+    <circle cx="${fmt(x)}" cy="${fmt(y)}" r="22" fill="#f6c343" stroke="#fff" stroke-width="5"/>
+    <text x="${fmt(x)}" y="${fmt(y + 9)}" text-anchor="middle" font-size="24">📝</text>
+  </g>`;
+}
+
 /**
  * @param {import('./geo.js').TrackPoint[]} points
  * @param {{ features?: { properties: { color: string }, geometry: { coordinates: number[][] } }[], color?: string,
- *   photos?: { id: string, index: number, thumb: string }[] }} opts  photos: 썸네일 마커 (thumb 는 object/data URL)
+ *   photos?: { id: string, index: number, thumb: string }[],
+ *   notes?: { id: string, index: number }[] }} opts  photos: 썸네일 마커 (thumb 는 object/data URL), notes: 메모 마커
  * @returns {string} SVG 마크업
  */
-export function routeSvg(points, { features = null, color = '#2e9e5b', photos = [] } = {}) {
+export function routeSvg(points, { features = null, color = '#2e9e5b', photos = [], notes = [] } = {}) {
   if (points.length < 2) return '';
   const height = svgHeight(points);
   // 사진이 있으면 위쪽 여백을 더 둬서 말풍선이 잘리지 않게
@@ -65,13 +74,15 @@ export function routeSvg(points, { features = null, color = '#2e9e5b', photos = 
   const lines = features
     ? features.map((f) => ({ d: toPath(f.geometry.coordinates), color: f.properties.color }))
     : [{ d: toPath(points.map((p) => [p.lon, p.lat])), color }];
+  const at = (index) => points[Math.min(Math.max(index, 0), points.length - 1)];
   const [sx, sy] = project(points[0]);
   const [ex, ey] = project(points.at(-1));
-  return `<svg class="route-svg" viewBox="0 0 ${SIZE} ${height}" preserveAspectRatio="xMidYMid meet" role="${photos.length ? 'group' : 'img'}" aria-label="경로 모양">
+  return `<svg class="route-svg" viewBox="0 0 ${SIZE} ${height}" preserveAspectRatio="xMidYMid meet" role="${photos.length || notes.length ? 'group' : 'img'}" aria-label="경로 모양">
     ${lines.map((l) => `<path d="${l.d}" fill="none" stroke="var(--surface)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>`).join('')}
     ${lines.map((l) => `<path d="${l.d}" fill="none" stroke="${l.color}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>`).join('')}
     <circle cx="${fmt(ex)}" cy="${fmt(ey)}" r="16" fill="#222" stroke="#fff" stroke-width="4"/>
     <circle cx="${fmt(sx)}" cy="${fmt(sy)}" r="16" fill="#1f8a52" stroke="#fff" stroke-width="4"/>
-    ${photos.map((ph) => photoMarker(ph, project(points[Math.min(Math.max(ph.index, 0), points.length - 1)]))).join('')}
+    ${notes.map((n) => noteMarker(n, project(at(n.index)))).join('')}
+    ${photos.map((ph) => photoMarker(ph, project(at(ph.index)))).join('')}
   </svg>`;
 }

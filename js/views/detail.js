@@ -4,8 +4,10 @@ import { findActivity, saveActivity, deleteActivity } from '../db.js';
 import { ACTIVITY_TYPES, getType, usesSpeed } from '../activity-types.js';
 import { updateActivity } from '../activity.js';
 import { elevationProfile, splits } from '../geo.js';
-import { createMap, drawRoute, addStartEndMarkers, addPhotoMarkers, fitRoute, speedLegend, speedColoredFeatures } from '../map.js';
+import { createMap, drawRoute, addStartEndMarkers, addPhotoMarkers, addNoteMarkers, fitRoute, speedLegend, speedColoredFeatures } from '../map.js';
 import { mountPhotoSection, openLightbox, photoCaption } from './detail-photos.js';
+import { mountNoteSection, noteCaption } from './detail-notes.js';
+import { openNoteViewer } from './note-dialog.js';
 import { openShareDialog } from './share-dialog.js';
 import { routeSvg } from '../route-svg.js';
 import { toGpx } from '../gpx.js';
@@ -116,6 +118,7 @@ export async function render(root, { params, navigate }) {
     <h2>구간 페이스</h2>
     <div data-ref="splits"></div>
     <section data-ref="photos"></section>
+    <section data-ref="notes"></section>
     <div class="row actions">
       <button class="btn btn-secondary" data-action="share">🖼 공유 카드</button>
       <button class="btn btn-secondary" data-action="gpx">⬇ GPX 내보내기</button>
@@ -146,16 +149,19 @@ export async function render(root, { params, navigate }) {
   let removeMarkers = null;
   let removePhotoMarkers = null;
   let photoState = { photos: [], urls: null };
+  let notes = [];
+  let removeNoteMarkers = null;
   let fallbackError = null; // WebGL 이 없어 SVG 대체 지도를 쓰는 경우 그 사유
 
   const openPhoto = (photo) => openLightbox(photoState.urls.get(photo.id).full, photoCaption(photo, activity.points));
+  const openNote = (note) => openNoteViewer(noteCaption(note, activity.points), note.text);
 
   // WebGL 이 없으면 배경 지도 없이 SVG 경로 + 사진 썸네일로 표시
   function drawFallbackMap() {
     const { geojson, thresholds } = speedColoredFeatures(activity.points);
     const photos = photoState.urls ? photoState.photos.map((p) => ({ id: p.id, index: p.index, thumb: photoState.urls.get(p.id).thumb })) : [];
     $('map').classList.add('map-fallback');
-    $('map').innerHTML = `${routeSvg(activity.points, { features: geojson.features, photos })}
+    $('map').innerHTML = `${routeSvg(activity.points, { features: geojson.features, photos, notes })}
       <p class="map-fallback-note">${fmt.esc(fallbackError)}</p>`;
     $('legend').innerHTML = speedLegend(thresholds)
       .map((l) => `<span><i style="background:${l.color}"></i>${l.label}</span>`)
@@ -169,6 +175,21 @@ export async function render(root, { params, navigate }) {
     if (!map || !photoState.urls || photoState.photos.length === 0) return;
     removePhotoMarkers = addPhotoMarkers(map, photoState.photos, activity.points, photoState.urls, openPhoto);
   }
+
+  function drawNoteMarkers() {
+    removeNoteMarkers?.();
+    removeNoteMarkers = null;
+    if (fallbackError) return drawFallbackMap();
+    if (!map || notes.length === 0) return;
+    removeNoteMarkers = addNoteMarkers(map, notes, activity.points, openNote);
+  }
+
+  mountNoteSection($('notes'), () => activity, (next) => {
+    notes = next;
+    drawNoteMarkers();
+  }).catch((err) => {
+    $('notes').innerHTML = `<p class="error">메모를 불러오지 못했습니다: ${fmt.esc(err?.message ?? err)}</p>`;
+  });
 
   const photoSection = mountPhotoSection($('photos'), () => activity, (photos, urls) => {
     photoState = { photos, urls };
@@ -184,6 +205,7 @@ export async function render(root, { params, navigate }) {
       const thresholds = drawRoute(map, activity.points, { colorBySpeed: true });
       removeMarkers = addStartEndMarkers(map, activity.points);
       fitRoute(map, activity.points);
+      drawNoteMarkers();
       drawPhotoMarkers();
       $('legend').innerHTML = speedLegend(thresholds)
         .map((l) => `<span><i style="background:${l.color}"></i>${l.label}</span>`)
@@ -194,12 +216,15 @@ export async function render(root, { params, navigate }) {
       drawFallbackMap();
     });
 
-  // 대체 지도의 사진 썸네일 클릭·키보드
+  // 대체 지도의 사진 썸네일·메모 마커 클릭·키보드
   const onFallbackPhoto = (e) => {
     if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
     const g = e.target.closest?.('.svg-photo');
     const photo = g && photoState.photos.find((p) => p.id === g.dataset.photoId);
-    if (photo) openPhoto(photo);
+    if (photo) return openPhoto(photo);
+    const ng = e.target.closest?.('.svg-note');
+    const note = ng && notes.find((n) => n.id === ng.dataset.noteId);
+    if (note) openNote(note);
   };
   $('map').addEventListener('click', onFallbackPhoto);
   $('map').addEventListener('keydown', onFallbackPhoto);
@@ -230,6 +255,7 @@ export async function render(root, { params, navigate }) {
   return () => {
     chart?.destroy();
     removePhotoMarkers?.();
+    removeNoteMarkers?.();
     photoSection.then((s) => s?.destroy());
     removeMarkers?.();
     map?.remove();

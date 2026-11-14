@@ -2,10 +2,11 @@
 import { openDB } from 'https://cdn.jsdelivr.net/npm/idb@8.0.0/+esm';
 
 const DB_NAME = 'gildam';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const ACTIVITIES = 'activities';
 const DRAFTS = 'drafts';
 const PHOTOS = 'photos';
+const NOTES = 'notes';
 const DRAFT_KEY = 'current';
 
 let dbPromise = null;
@@ -22,6 +23,10 @@ function db() {
       if (oldVersion < 2) {
         // 사진: { id, activityId, blob, thumb, lat, lon, time, index, method, name, createdAt }
         database.createObjectStore(PHOTOS, { keyPath: 'id' }).createIndex('activityId', 'activityId');
+      }
+      if (oldVersion < 3) {
+        // 메모: { id, activityId, text, lat, lon, time, index, method, createdAt, updatedAt? }
+        database.createObjectStore(NOTES, { keyPath: 'id' }).createIndex('activityId', 'activityId');
       }
     },
     // 새 버전 탭이 업그레이드를 요청하면 이 탭의 연결을 닫아 막지 않음 (다음 접근 때 다시 열림)
@@ -52,11 +57,19 @@ export async function saveActivity(activity) {
   return activity;
 }
 
-/** 활동과 연결된 사진까지 함께 삭제 */
+/** 활동과 연결된 사진·메모까지 함께 삭제 */
 export async function deleteActivity(id) {
-  const tx = (await db()).transaction([ACTIVITIES, PHOTOS], 'readwrite');
-  const photoKeys = await tx.objectStore(PHOTOS).index('activityId').getAllKeys(id);
-  await Promise.all([tx.objectStore(ACTIVITIES).delete(id), ...photoKeys.map((k) => tx.objectStore(PHOTOS).delete(k)), tx.done]);
+  const tx = (await db()).transaction([ACTIVITIES, PHOTOS, NOTES], 'readwrite');
+  const [photoKeys, noteKeys] = await Promise.all([
+    tx.objectStore(PHOTOS).index('activityId').getAllKeys(id),
+    tx.objectStore(NOTES).index('activityId').getAllKeys(id),
+  ]);
+  await Promise.all([
+    tx.objectStore(ACTIVITIES).delete(id),
+    ...photoKeys.map((k) => tx.objectStore(PHOTOS).delete(k)),
+    ...noteKeys.map((k) => tx.objectStore(NOTES).delete(k)),
+    tx.done,
+  ]);
 }
 
 // ---- 사진 ----
@@ -74,6 +87,23 @@ export async function savePhoto(photo) {
 
 export async function deletePhoto(id) {
   await (await db()).delete(PHOTOS, id);
+}
+
+// ---- 메모 ----
+
+/** 경로 순서(index)대로 정렬된 활동 메모 */
+export async function findNotes(activityId) {
+  const notes = await (await db()).getAllFromIndex(NOTES, 'activityId', activityId);
+  return notes.sort((a, b) => a.index - b.index || (a.time ?? a.createdAt) - (b.time ?? b.createdAt));
+}
+
+export async function saveNote(note) {
+  await (await db()).put(NOTES, note);
+  return note;
+}
+
+export async function deleteNote(id) {
+  await (await db()).delete(NOTES, id);
 }
 
 // ---- 기록 중 임시 저장 (탭이 닫혀도 복구 가능) ----
@@ -113,7 +143,8 @@ export async function exportAll() {
   const photos = await Promise.all(
     rawPhotos.map(async ({ blob, thumb, ...rest }) => ({ ...rest, blob: await blobToDataUrl(blob), thumb: await blobToDataUrl(thumb) })),
   );
-  return { app: 'gildam', version: 2, exportedAt: new Date().toISOString(), activities, photos };
+  const notes = await (await db()).getAll(NOTES);
+  return { app: 'gildam', version: 3, exportedAt: new Date().toISOString(), activities, photos, notes };
 }
 
 /**
@@ -121,8 +152,9 @@ export async function exportAll() {
  * @param {object} backup
  * @param {(a: unknown) => boolean} validateActivity
  * @param {(p: unknown) => boolean} validatePhoto
+ * @param {(n: unknown) => boolean} validateNote
  */
-export async function importAll(backup, validateActivity, validatePhoto = () => false) {
+export async function importAll(backup, validateActivity, validatePhoto = () => false, validateNote = () => false) {
   if (!backup || backup.app !== 'gildam' || !Array.isArray(backup.activities)) {
     throw new Error('길담 백업 파일이 아닙니다.');
   }
@@ -143,10 +175,13 @@ export async function importAll(backup, validateActivity, validatePhoto = () => 
         }),
     )
   ).filter(Boolean);
-  const tx = (await db()).transaction([ACTIVITIES, PHOTOS], 'readwrite');
+  const rawNotes = Array.isArray(backup.notes) ? backup.notes : [];
+  const notes = rawNotes.filter((n) => validateNote(n) && activityIds.has(n.activityId));
+  const tx = (await db()).transaction([ACTIVITIES, PHOTOS, NOTES], 'readwrite');
   await Promise.all([
     ...activities.map((a) => tx.objectStore(ACTIVITIES).put(a)),
     ...photos.map((p) => tx.objectStore(PHOTOS).put(p)),
+    ...notes.map((n) => tx.objectStore(NOTES).put(n)),
     tx.done,
   ]);
   return {
@@ -154,5 +189,7 @@ export async function importAll(backup, validateActivity, validatePhoto = () => 
     skipped: backup.activities.length - activities.length,
     photos: photos.length,
     photosSkipped: rawPhotos.length - photos.length,
+    notes: notes.length,
+    notesSkipped: rawNotes.length - notes.length,
   };
 }

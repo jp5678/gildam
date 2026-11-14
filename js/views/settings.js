@@ -4,6 +4,7 @@ import { ACTIVITY_TYPES } from '../activity-types.js';
 import { exportAll, importAll } from '../db.js';
 import { isValidActivity } from '../activity.js';
 import { isValidPhotoRecord } from '../photo-match.js';
+import { isValidNoteRecord } from '../note-model.js';
 import { toast, downloadText, pickFiles } from '../ui.js';
 import { esc } from '../format.js';
 
@@ -104,7 +105,7 @@ export function render(root) {
         const data = await exportAll();
         const day = new Date().toISOString().slice(0, 10);
         downloadText(`gildam-backup-${day}.json`, JSON.stringify(data), 'application/json');
-        toast(`활동 ${data.activities.length}개, 사진 ${data.photos.length}장을 백업했습니다.`);
+        toast(`활동 ${data.activities.length}개, 사진 ${data.photos.length}장, 메모 ${data.notes.length}개를 백업했습니다.`);
       } catch (err) {
         toast(`백업 실패: ${err.message}`, { type: 'error' });
       }
@@ -113,9 +114,9 @@ export function render(root) {
       if (!file) return;
       try {
         if (file.size > MAX_BACKUP_BYTES) throw new Error('파일이 너무 큽니다.');
-        const r = await importAll(JSON.parse(await file.text()), isValidActivity, isValidPhotoRecord);
-        const skipped = r.skipped + r.photosSkipped;
-        toast(`활동 ${r.imported}개, 사진 ${r.photos}장을 복원했습니다.${skipped ? ` (손상된 항목 ${skipped}개 건너뜀)` : ''}`);
+        const r = await importAll(JSON.parse(await file.text()), isValidActivity, isValidPhotoRecord, isValidNoteRecord);
+        const skipped = r.skipped + r.photosSkipped + r.notesSkipped;
+        toast(`활동 ${r.imported}개, 사진 ${r.photos}장, 메모 ${r.notes}개를 복원했습니다.${skipped ? ` (손상된 항목 ${skipped}개 건너뜀)` : ''}`);
       } catch (err) {
         toast(`복원 실패: ${err instanceof SyntaxError ? 'JSON 형식이 아닙니다.' : err.message}`, { type: 'error' });
       }

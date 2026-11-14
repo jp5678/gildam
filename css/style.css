@@ -343,7 +343,9 @@ button.cal-cell { cursor: pointer; }
 /* 칩 줄: 좁은 화면에서도 모든 종류가 보이도록 줄바꿈 */
 .chips-row { margin-bottom: 10px; gap: 6px; }
 .chips-row .chip { min-height: 36px; padding: 6px 12px; font-size: 0.9rem; }
-.controls .btn-photo { flex: 0 0 auto; min-height: 64px; border-radius: 18px; padding: 0 18px; font-size: 1.05rem; }
+.controls-extra { display: flex; gap: 10px; margin-top: 10px; }
+.controls-extra[hidden] { display: none; }
+.controls-extra .btn { flex: 1; min-height: 52px; border-radius: 16px; font-size: 1.05rem; }
 
 /* 캘린더 주말 색 (기록 없는 날에만, 기록 있는 날은 히트맵 색 유지) */
 .cal-wd.sun, .cal-cell.lv0.sun { color: #d23f31; }
@@ -360,3 +362,30 @@ button.cal-cell { cursor: pointer; }
 
 .sample-panel { margin: 0 0 12px; }
 .sample-panel .hint { margin-top: 0; }
+
+/* 메모 */
+.note-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.note-item { background: var(--surface); border-radius: 12px; padding: 10px 12px; box-shadow: var(--shadow); border-left: 4px solid #f6c343; }
+.note-meta { font-size: 0.75rem; color: var(--text-2); margin: 0 0 4px; }
+.note-item .note-text { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.note-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; }
+.note-marker {
+  width: 34px; height: 34px; border-radius: 50%; border: 3px solid #fff; padding: 0; cursor: pointer;
+  background: #f6c343; font-size: 16px; line-height: 1; box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
+}
+.note-dialog { border: 0; border-radius: 18px; padding: 16px; background: var(--surface); color: var(--text); width: min(440px, 94vw); }
+.note-dialog::backdrop { background: rgb(0 0 0 / 0.6); }
+.note-dialog h3 { margin: 0 0 10px; font-size: 1.05rem; }
+.note-dialog textarea {
+  width: 100%; box-sizing: border-box; font: inherit; font-size: 1rem; padding: 10px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--text); resize: vertical;
+}
+.note-dialog .note-count { font-size: 0.75rem; text-align: right; margin: 4px 0 8px; }
+.note-pos { display: grid; gap: 4px; margin-bottom: 8px; font-size: 0.9rem; }
+.note-pos input { width: 100%; accent-color: var(--green-500); }
+.note-dialog .row { justify-content: flex-end; margin-top: 8px; }
+.note-viewer .note-caption { font-size: 0.8rem; margin: 0 0 8px; }
+.note-viewer .note-text { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 1.05rem; }
+.svg-note { cursor: pointer; }
+.svg-note:focus { outline: none; }
+.svg-note:focus-visible circle { stroke: var(--green-500); }

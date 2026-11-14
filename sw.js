@@ -1,6 +1,6 @@
 // 길담 서비스 워커: 앱 셸·라이브러리 사전 캐시 + 지도 타일 런타임 캐시
 // 앱 파일을 바꾸면 VERSION 을 올려야 사용자에게 새 버전이 반영됨 (tests/pwa.test.js 가 목록 누락을 검사)
-const VERSION = 'v3.6.1';
+const VERSION = 'v3.7.0';
 const SHELL_CACHE = `gildam-shell-${VERSION}`;
 const CDN_CACHE = `gildam-cdn-${VERSION}`;
 const TILE_CACHE = 'gildam-tiles';
@@ -24,6 +24,8 @@ const SHELL = [
   './js/gpx.js',
   './js/importer.js',
   './js/map.js',
+  './js/note-model.js',
+  './js/notes.js',
   './js/photo-match.js',
   './js/photos.js',
   './js/privacy.js',
@@ -39,8 +41,10 @@ const SHELL = [
   './js/video-export.js',
   './js/views/archive.js',
   './js/views/calendar.js',
+  './js/views/detail-notes.js',
   './js/views/detail-photos.js',
   './js/views/detail.js',
+  './js/views/note-dialog.js',
   './js/views/record.js',
   './js/views/replay-record.js',
   './js/views/replay.js',
