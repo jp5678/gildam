@@ -1,6 +1,6 @@
 // 길담 서비스 워커: 앱 셸·라이브러리 사전 캐시 + 지도 타일 런타임 캐시
 // 앱 파일을 바꾸면 VERSION 을 올려야 사용자에게 새 버전이 반영됨 (tests/pwa.test.js 가 목록 누락을 검사)
-const VERSION = 'v3.3.0';
+const VERSION = 'v3.3.1';
 const SHELL_CACHE = `gildam-shell-${VERSION}`;
 const CDN_CACHE = `gildam-cdn-${VERSION}`;
 const TILE_CACHE = 'gildam-tiles';
@@ -63,7 +63,9 @@ const TILE_HOSTS = ['tile.openstreetmap.org', 'api.maptiler.com'];
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
-      await (await caches.open(SHELL_CACHE)).addAll(SHELL);
+      // cache: 'reload' — 브라우저 HTTP 캐시(GitHub Pages max-age=600)를 건너뛰고 서버에서 새로 받음.
+      // 이렇게 하지 않으면 배포 직후 새 버전 캐시에 이전 파일이 섞여 들어갈 수 있음
+      await (await caches.open(SHELL_CACHE)).addAll(SHELL.map((url) => new Request(url, { cache: 'reload' })));
       // CDN 은 실패해도 설치는 진행 (온라인에서 다시 캐시됨)
       const cdn = await caches.open(CDN_CACHE);
       await Promise.all(CDN.map((url) => cdn.add(url).catch(() => undefined)));

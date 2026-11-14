@@ -31,3 +31,7 @@ test('manifest: 필수 항목과 아이콘 파일', () => {
   assert.ok(m.icons.some((i) => i.sizes === '512x512' && i.purpose === 'maskable'));
   m.icons.forEach((i) => assert.ok(existsSync(join(ROOT, i.src)), i.src));
 });
+
+test('설치 시 앱 셸을 HTTP 캐시를 건너뛰고 받음 (배포 직후 이전 파일이 섞이지 않도록)', () => {
+  assert.match(sw, /SHELL\.map\(\(url\) => new Request\(url, \{ cache: 'reload' \}\)\)/);
+});
