@@ -47,11 +47,27 @@ export function openNoteEditor({ title, text = '', route = null }) {
   refresh();
 
   return new Promise((resolve) => {
-    dlg.addEventListener('close', () => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    // 저장은 submit 에서 바로 결정 (close 이벤트는 화면 갱신이 멈춘 상태에서 늦게 오거나 오지 않을 수 있음)
+    dlg.querySelector('form').addEventListener('submit', (e) => {
       const text = cleanNoteText(area.value);
-      resolve(dlg.returnValue === 'save' && text ? { text, index: slider ? Number(slider.value) : null } : null);
+      if (e.submitter?.value === 'save' && text) finish({ text, index: slider ? Number(slider.value) : null });
+      else finish(null);
+      setTimeout(() => dlg.remove(), 0); // 대화상자가 닫힌 뒤 문서에서 제거
     });
-    dlg.addEventListener('click', (e) => e.target === dlg && dlg.close('cancel'));
+    dlg.addEventListener('close', () => finish(null));
+    dlg.addEventListener('cancel', () => finish(null)); // Esc
+    dlg.addEventListener('click', (e) => {
+      if (e.target !== dlg) return; // 바깥(배경) 클릭은 취소
+      finish(null);
+      dlg.close('cancel');
+      dlg.remove();
+    });
     dlg.showModal();
     area.focus();
   });
@@ -64,6 +80,10 @@ export function openNoteViewer(caption, text) {
     <div class="row"><button class="btn btn-primary" data-close>닫기</button></div>`;
   dlg.querySelector('.note-caption').textContent = `📝 ${caption}`;
   dlg.querySelector('.note-text').textContent = text;
-  dlg.addEventListener('click', (e) => (e.target === dlg || e.target.closest('[data-close]')) && dlg.close());
+  dlg.addEventListener('click', (e) => {
+    if (e.target !== dlg && !e.target.closest('[data-close]')) return;
+    dlg.close();
+    dlg.remove();
+  });
   dlg.showModal();
 }

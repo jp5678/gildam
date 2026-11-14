@@ -8,6 +8,7 @@ const MAX_FILES_PER_UPLOAD = 30;
 const FULL_MAX_PX = 1600;
 const THUMB_MAX_PX = 240;
 const JPEG_QUALITY = 0.85;
+const DECODE_TIMEOUT_MS = 15_000;
 
 export class PhotoError extends Error {}
 
@@ -32,20 +33,51 @@ export async function readPhotoMeta(file) {
   };
 }
 
-async function decode(file) {
+/** <img> 로 디코딩 (createImageBitmap 옵션을 지원하지 않는 이전 Safari 등). 최신 브라우저는 EXIF 회전을 반영함 */
+async function decodeWithImage(file) {
+  const url = URL.createObjectURL(file);
   try {
-    return await createImageBitmap(file, { imageOrientation: 'from-image' });
+    // img.decode() 는 화면이 그려지지 않는 상태에서 끝나지 않는 경우가 있어 onload + 시간 제한 사용
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      const timer = setTimeout(() => reject(new Error('timeout')), DECODE_TIMEOUT_MS);
+      el.onload = () => (clearTimeout(timer), resolve(el));
+      el.onerror = () => (clearTimeout(timer), reject(new Error('decode failed')));
+      el.src = url;
+    });
+    return { source: img, width: img.naturalWidth, height: img.naturalHeight, close: () => {} };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** 이미지 디코딩: createImageBitmap(회전 반영) → 옵션 없이 → <img> 순으로 시도 */
+async function decode(file) {
+  const attempts = [
+    () => createImageBitmap(file, { imageOrientation: 'from-image' }),
+    () => createImageBitmap(file),
+  ];
+  for (const attempt of attempts) {
+    try {
+      const bitmap = await attempt();
+      return { source: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close() };
+    } catch {
+      // 다음 방법으로 시도
+    }
+  }
+  try {
+    return await decodeWithImage(file);
   } catch {
     throw new PhotoError('이 이미지 형식(HEIC 등)은 브라우저에서 열 수 없습니다. JPEG 로 변환해 올려 주세요.');
   }
 }
 
-function resize(bitmap, maxPx) {
-  const scale = Math.min(1, maxPx / Math.max(bitmap.width, bitmap.height));
+function resize(image, maxPx) {
+  const scale = Math.min(1, maxPx / Math.max(image.width, image.height));
   const canvas = document.createElement('canvas');
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  canvas.width = Math.round(image.width * scale);
+  canvas.height = Math.round(image.height * scale);
+  canvas.getContext('2d').drawImage(image.source, 0, 0, canvas.width, canvas.height);
   return new Promise((resolve, reject) =>
     canvas.toBlob((b) => (b ? resolve(b) : reject(new PhotoError('이미지를 변환하지 못했습니다.'))), 'image/jpeg', JPEG_QUALITY),
   );
@@ -58,12 +90,12 @@ function validateImageFile(file) {
 
 /** 축소·재인코딩 후 저장 (원본 EXIF 제거) */
 async function storeImage(file, fields) {
-  const bitmap = await decode(file);
+  const image = await decode(file);
   try {
-    const [blob, thumb] = await Promise.all([resize(bitmap, FULL_MAX_PX), resize(bitmap, THUMB_MAX_PX)]);
+    const [blob, thumb] = await Promise.all([resize(image, FULL_MAX_PX), resize(image, THUMB_MAX_PX)]);
     return savePhoto({ id: newId(), blob, thumb, name: file.name.slice(0, 120), createdAt: Date.now(), ...fields });
   } finally {
-    bitmap.close();
+    image.close();
   }
 }
 

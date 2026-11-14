@@ -37,6 +37,24 @@ const TEMPLATE = `
   </div>
 </section>`;
 
+// 처리 중인 사진·메모 저장. 화면을 옮겨도 이어지므로 모듈에 둠.
+// 종료할 때 이것을 기다려야, 저장이 끝나기 전에 누른 종료로 사진이 활동에 연결되지 않는 일이 없음
+const pendingSaves = new Set();
+let savingPhotos = 0;
+
+function track(promise) {
+  pendingSaves.add(promise);
+  promise.finally(() => pendingSaves.delete(promise)).catch(() => {});
+  return promise;
+}
+
+const waitPendingSaves = () => Promise.allSettled([...pendingSaves]);
+
+/** "사진 2장·메모 1개" (없으면 빈 문자열) */
+function draftSummary(photos, notes) {
+  return [photos ? `사진 ${photos}장` : null, notes ? `메모 ${notes}개` : null].filter(Boolean).join('·');
+}
+
 export async function render(root, { navigate }) {
   root.innerHTML = TEMPLATE;
   const $ = (name) => root.querySelector(`[data-ref="${name}"]`);
@@ -79,7 +97,7 @@ export async function render(root, { navigate }) {
     el.innerHTML =
       state === 'idle'
         ? ''
-        : `<button class="btn btn-secondary" data-action="photo" aria-label="사진 찍기">📷 사진${countLabel(photoCount)}</button>
+        : `<button class="btn btn-secondary" data-action="photo" aria-label="사진 찍기">📷 ${savingPhotos ? '저장 중…' : `사진${countLabel(photoCount)}`}</button>
            <button class="btn btn-secondary" data-action="note" aria-label="메모 남기기">📝 메모${countLabel(noteCount)}</button>`;
   }
 
@@ -104,10 +122,20 @@ export async function render(root, { navigate }) {
   async function takePhoto() {
     const [file] = await pickFiles({ accept: 'image/*', capture: 'environment' });
     if (!file) return;
-    await addLivePhoto(file, currentPlace());
-    photoCount += 1;
+    // 휴대폰 원본 사진은 줄여서 저장하는 데 몇 초 걸리므로 바로 알려 줌
+    savingPhotos += 1;
     renderExtra(recorder.state);
-    toast(`사진을 저장했습니다 (${photoCount}장). 기록을 마치면 경로에 표시됩니다.`);
+    toast('사진을 저장하는 중…', { duration: 10_000 });
+    try {
+      await track(addLivePhoto(file, currentPlace()));
+      photoCount += 1;
+      toast(`사진을 저장했습니다 (${photoCount}장). 기록을 마치면 경로에 표시됩니다.`);
+    } catch (err) {
+      toast(`사진을 저장하지 못했습니다: ${err?.message ?? err}`, { type: 'error', duration: 7000 });
+    } finally {
+      savingPhotos -= 1;
+      renderExtra(recorder.state);
+    }
   }
 
   /** 기록 중 메모: 입력창을 연 순간의 위치로 저장 (입력하는 동안 이동해도 위치가 바뀌지 않게) */
@@ -115,10 +143,21 @@ export async function render(root, { navigate }) {
     const where = currentPlace();
     const result = await openNoteEditor({ title: '📝 지금 위치에 메모' });
     if (!result) return;
-    await addLiveNote(result.text, where);
+    await track(addLiveNote(result.text, where));
     noteCount += 1;
     renderExtra(recorder.state);
     toast(`메모를 저장했습니다 (${noteCount}개). 기록을 마치면 경로에 표시됩니다.`);
+  }
+
+  /** 임시 저장된 사진·메모 개수를 다시 읽어 버튼에 표시 (화면 재진입·이어서 기록) */
+  function refreshDraftCounts() {
+    Promise.all([countDraftPhotos(), countDraftNotes()])
+      .then(([photos, notes]) => {
+        photoCount = photos;
+        noteCount = notes;
+        renderExtra(recorder.state);
+      })
+      .catch(() => {});
   }
 
   async function discardDrafts() {
@@ -171,24 +210,26 @@ export async function render(root, { navigate }) {
 
   async function finish() {
     const { type, points } = await recorder.stop();
+    if (pendingSaves.size) toast('사진 저장을 마무리하는 중…', { duration: 10_000 });
+    await waitPendingSaves();
     if (points.length < 2) {
       const removed = await discardDrafts();
-      const extra = [removed.photos ? `사진 ${removed.photos}장` : null, removed.notes ? `메모 ${removed.notes}개` : null].filter(Boolean);
-      toast(`기록된 지점이 부족해 저장하지 않았습니다.${extra.length ? ` (${extra.join('·')}도 삭제)` : ''}`, { type: 'warn' });
+      const summary = draftSummary(removed.photos, removed.notes);
+      toast(`기록된 지점이 부족해 저장하지 않았습니다.${summary ? ` (${summary}도 삭제)` : ''}`, { type: 'warn' });
       return;
     }
     const activity = buildActivity({ id: newId(), now: Date.now(), points, type, source: 'gps', weightKg: loadSettings().weightKg });
     await saveActivity(activity);
     const attach = (fn, label) =>
       fn(activity).catch((err) => {
-        toast(`${label}를 연결하지 못했습니다: ${err?.message ?? err}`, { type: 'error' });
+        toast(`${label} 연결하지 못했습니다: ${err?.message ?? err}`, { type: 'error' });
         return 0;
       });
-    const [photos, notes] = await Promise.all([attach(attachDraftPhotos, '사진'), attach(attachDraftNotes, '메모')]);
+    const [photos, notes] = await Promise.all([attach(attachDraftPhotos, '사진을'), attach(attachDraftNotes, '메모를')]);
     photoCount = 0;
     noteCount = 0;
-    const extra = [photos ? `사진 ${photos}장` : null, notes ? `메모 ${notes}개` : null].filter(Boolean);
-    toast(extra.length ? `활동과 ${extra.join('·')}를 저장했습니다.` : '활동을 저장했습니다.');
+    const summary = draftSummary(photos, notes);
+    toast(summary ? `활동을 저장했습니다 (${summary} 포함).` : '활동을 저장했습니다.');
     navigate(`#/activity/${activity.id}`);
   }
 
@@ -210,6 +251,7 @@ export async function render(root, { navigate }) {
     note: takeNote,
     start: async () => {
       // 이전에 버려지지 않은 임시 사진·메모가 새 기록에 섞이지 않도록 정리
+      await waitPendingSaves();
       if (!pendingDraft) await discardDrafts();
       recorder.start(selectedType);
     },
@@ -236,6 +278,7 @@ export async function render(root, { navigate }) {
       $('draft').hidden = true;
       selectedType = draft.type;
       recorder.start(draft.type, draft);
+      refreshDraftCounts();
     },
     'draft-discard': async () => {
       if (!(await confirmDialog('남은 기록을 버릴까요? 되돌릴 수 없습니다.'))) return;
@@ -260,15 +303,7 @@ export async function render(root, { navigate }) {
   });
 
   showNotice();
-  if (recorder.state !== 'idle') {
-    Promise.all([countDraftPhotos(), countDraftNotes()])
-      .then(([photos, notes]) => {
-        photoCount = photos;
-        noteCount = notes;
-        renderExtra(recorder.state);
-      })
-      .catch(() => {});
-  }
+  if (recorder.state !== 'idle') refreshDraftCounts();
   update(recorder.snapshot());
   checkDraft();
   const unsubscribe = recorder.subscribe({ onChange: update, onError: (msg) => toast(msg, { type: 'error', duration: 5000 }) });
