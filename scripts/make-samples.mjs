@@ -93,7 +93,65 @@ function running() {
   return toGpx({ name: '한강 여의도 아침 러닝 (샘플)', type: 'running', points: spiked });
 }
 
+/** 타원 둘레 웨이포인트 (시계 방향, 시작점으로 돌아옴) */
+function ellipse({ lat, lon, rLat, rLon, n = 28, ele = 30, eleAmp = 0 }) {
+  return Array.from({ length: n + 1 }, (_, i) => {
+    const t = (i / n) * Math.PI * 2;
+    return [lat + rLat * Math.cos(t), lon + rLon * Math.sin(t), ele + eleAmp * Math.sin(t * 2)];
+  });
+}
+
+// 올림픽공원 안 산책 한 바퀴 (약 2.4km)
+function walking() {
+  const rand = rng(11);
+  const loop = ellipse({ lat: 37.5195, lon: 127.121, rLat: 0.0022, rLon: 0.0042, ele: 30, eleAmp: 4 });
+  const start = Date.parse('2026-11-03T18:30:00+09:00');
+  const points = walkPath(loop, { startTime: start, dtSec: 5, speedFn: (_g, r) => 1.25 + r() * 0.2, jitterM: 2, rand });
+  return toGpx({ name: '올림픽공원 저녁 산책 (샘플)', type: 'walking', points });
+}
+
+// 올림픽공원 외곽 순환 3바퀴 (약 11km)
+function biking() {
+  const rand = rng(23);
+  const lap = ellipse({ lat: 37.5195, lon: 127.121, rLat: 0.0036, rLon: 0.0072, n: 36, ele: 32, eleAmp: 6 });
+  const route = [...lap, ...lap.slice(1), ...lap.slice(1)];
+  const start = Date.parse('2026-10-25T09:00:00+09:00');
+  const points = walkPath(route, { startTime: start, dtSec: 2, speedFn: (g, r) => (g > 0 ? 5.2 : 6.6) + r() * 0.8, jitterM: 2, rand });
+  return toGpx({ name: '올림픽공원 순환 라이딩 (샘플)', type: 'biking', points });
+}
+
+// 도심 순환 드라이브: 시청 → 광화문 → 종로 → 동대문 → 을지로 → 시청 (신호 대기 포함, 약 7km)
+function driving() {
+  const rand = rng(31);
+  const legs = [
+    [[37.5663, 126.9779, 25], [37.5714, 126.9768, 28]], // 세종대로 북쪽
+    [[37.5714, 126.9768, 28], [37.5703, 126.9830, 27], [37.5704, 126.9920, 26], [37.5708, 127.0010, 25], [37.5711, 127.0095, 24]], // 종로
+    [[37.5711, 127.0095, 24], [37.5665, 127.0090, 24]], // 동대문 → 을지로6가
+    [[37.5665, 127.0090, 24], [37.5662, 127.0000, 25], [37.5660, 126.9910, 26], [37.5660, 126.9830, 26], [37.5663, 126.9779, 25]], // 을지로
+  ];
+  const start = Date.parse('2026-11-01T14:00:00+09:00');
+  const carSpeed = (_g, r) => 8 + r() * 6; // 29~50km/h
+  let points = [];
+  let t = start;
+  for (const leg of legs) {
+    const moving = walkPath(leg, { startTime: t, dtSec: 2, speedFn: carSpeed, jitterM: 3, rand });
+    const wait = rest(moving.at(-1), { startTime: moving.at(-1).time, seconds: 40 + Math.round(rand() * 50), dtSec: 2, rand }); // 신호 대기
+    points = [...points, ...moving, ...wait];
+    t = wait.at(-1).time + 2000;
+  }
+  return toGpx({ name: '도심 순환 드라이브 (샘플)', type: 'driving', points });
+}
+
+const SAMPLES = {
+  'walking-olympicpark.gpx': walking,
+  'running-hangang.gpx': running,
+  'biking-olympicpark.gpx': biking,
+  'hiking-bukhansan.gpx': hiking,
+  'driving-downtown.gpx': driving,
+};
+
 mkdirSync(new URL('../sample/', import.meta.url), { recursive: true });
-writeFileSync(new URL('../sample/hiking-bukhansan.gpx', import.meta.url), hiking());
-writeFileSync(new URL('../sample/running-hangang.gpx', import.meta.url), running());
-process.stdout.write('sample/hiking-bukhansan.gpx, sample/running-hangang.gpx 생성 완료\n');
+for (const [file, make] of Object.entries(SAMPLES)) {
+  writeFileSync(new URL(`../sample/${file}`, import.meta.url), make());
+  process.stdout.write(`sample/${file}\n`);
+}

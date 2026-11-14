@@ -7,10 +7,17 @@ import { calendarHtml } from './calendar.js';
 import { formatDistance, formatDuration, formatDateTime, formatPace, formatSpeed, esc } from '../format.js';
 import { toast, pickFiles } from '../ui.js';
 
+// 종류별 샘플 (scripts/make-samples.mjs 로 생성한 합성 경로)
 const SAMPLES = Object.freeze([
-  { path: 'sample/hiking-bukhansan.gpx', label: '⛰️ 샘플 등산' },
-  { path: 'sample/running-hangang.gpx', label: '🏃 샘플 러닝' },
+  { path: 'sample/walking-olympicpark.gpx', label: '🚶 걷기' },
+  { path: 'sample/running-hangang.gpx', label: '🏃 달리기' },
+  { path: 'sample/biking-olympicpark.gpx', label: '🚴 자전거' },
+  { path: 'sample/hiking-bukhansan.gpx', label: '⛰️ 등산' },
+  { path: 'sample/driving-downtown.gpx', label: '🚗 자동차' },
 ]);
+
+const sampleButtons = () =>
+  SAMPLES.map((s) => `<button class="btn btn-secondary btn-sm" data-sample="${s.path}">${s.label}</button>`).join('');
 
 const PERIODS = Object.freeze([
   ['all', '전체 기간'],
@@ -44,8 +51,15 @@ export async function render(root, { navigate }) {
   <section class="view view-archive">
     <header class="view-header">
       <h1>보관함</h1>
-      <button class="btn btn-ghost btn-sm" data-action="import">📂 가져오기</button>
+      <div class="row">
+        <button class="btn btn-ghost btn-sm" data-action="samples" aria-expanded="false">🧪 샘플</button>
+        <button class="btn btn-ghost btn-sm" data-action="import">📂 가져오기</button>
+      </div>
     </header>
+    <div class="card sample-panel" data-ref="samples" hidden>
+      <p class="hint">종류별 샘플 활동을 불러와 기능을 둘러볼 수 있습니다 (합성 경로). 불러온 샘플은 일반 활동처럼 삭제할 수 있습니다.</p>
+      <div class="row">${sampleButtons()}</div>
+    </div>
     <div class="calendar card" data-ref="calendar" hidden></div>
     <div class="chips chips-row">
       <button class="chip" data-filter="all">전체</button>
@@ -76,7 +90,8 @@ export async function render(root, { navigate }) {
       $('list').innerHTML = `<div class="empty">
         <p>아직 기록이 없습니다.</p>
         <p class="muted">기록 탭에서 새 활동을 시작하거나, GPX 파일을 가져오거나, 샘플로 둘러보세요.</p>
-        <div class="row">${SAMPLES.map((s) => `<button class="btn btn-secondary" data-sample="${s.path}">${s.label}</button>`).join('')}</div>
+        <p class="muted">샘플 불러오기</p>
+        <div class="row">${sampleButtons()}</div>
       </div>`;
       return;
     }
@@ -119,6 +134,13 @@ export async function render(root, { navigate }) {
     }
     if (f || p || day || cal || e.target.closest('[data-clear-day]')) return draw();
 
+    const toggle = e.target.closest('[data-action="samples"]');
+    if (toggle) {
+      const panel = $('samples');
+      panel.hidden = !panel.hidden;
+      toggle.setAttribute('aria-expanded', String(!panel.hidden));
+      return;
+    }
     const sample = e.target.closest('[data-sample]');
     if (sample) {
       try {

@@ -137,7 +137,7 @@ export async function render(root) {
     // 운동 기록과 자동차 기록을 나눠 표시 (운전 거리가 운동 기록을 차지하지 않도록)
     const records = personalRecords(list);
     const groups = [
-      ['exercise', '운동', records.filter((r) => r.group === 'exercise')],
+      ['exercise', '💪 운동', records.filter((r) => r.group === 'exercise')],
       ['car', '🚗 자동차', records.filter((r) => r.group === 'car')],
     ].filter(([, , items]) => items.length);
     $('records').innerHTML = groups.length
