@@ -24,6 +24,7 @@ export function startOfWeek(ms) {
 /** 기간 시작 시각 */
 export function periodStart(ms, unit) {
   const d = new Date(ms);
+  if (unit === 'day') return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   if (unit === 'week') return startOfWeek(ms);
   if (unit === 'month') return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
   if (unit === 'year') return new Date(d.getFullYear(), 0, 1).getTime();
@@ -33,7 +34,8 @@ export function periodStart(ms, unit) {
 /** 이전/다음 기간 시작 (step 은 음수 가능) */
 export function shiftPeriod(startMs, unit, step) {
   const d = new Date(startMs);
-  if (unit === 'week') d.setDate(d.getDate() + 7 * step);
+  if (unit === 'day') d.setDate(d.getDate() + step);
+  else if (unit === 'week') d.setDate(d.getDate() + 7 * step);
   else if (unit === 'month') d.setMonth(d.getMonth() + step);
   else d.setFullYear(d.getFullYear() + step);
   return d.getTime();
@@ -41,7 +43,13 @@ export function shiftPeriod(startMs, unit, step) {
 
 export function periodLabel(startMs, unit) {
   const d = new Date(startMs);
-  if (unit === 'week') return `${d.getMonth() + 1}/${d.getDate()}`;
+  if (unit === 'day') return `${d.getMonth() + 1}/${d.getDate()}`;
+  if (unit === 'week') {
+    // 주는 기간으로 표시 (시작일만 쓰면 그 주의 기록이 빠진 것처럼 보임): 11/9~15, 달이 바뀌면 10/26~11/1
+    const end = new Date(shiftPeriod(startMs, 'week', 1) - 86_400_000);
+    const tail = end.getMonth() === d.getMonth() ? `${end.getDate()}` : `${end.getMonth() + 1}/${end.getDate()}`;
+    return `${d.getMonth() + 1}/${d.getDate()}~${tail}`;
+  }
   if (unit === 'month') return `${d.getMonth() + 1}월`;
   return `${d.getFullYear()}`;
 }

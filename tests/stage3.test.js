@@ -45,7 +45,11 @@ test('periodStart / shiftPeriod / periodLabel', () => {
   assert.equal(periodStart(now, 'year'), kst('2026-01-01T00:00:00'));
   assert.equal(shiftPeriod(kst('2026-01-01T00:00:00'), 'month', -1), kst('2025-12-01T00:00:00'));
   assert.equal(shiftPeriod(kst('2026-11-09T00:00:00'), 'week', 1), kst('2026-11-16T00:00:00'));
-  assert.equal(periodLabel(kst('2026-11-09T00:00:00'), 'week'), '11/9');
+  assert.equal(periodLabel(kst('2026-11-09T00:00:00'), 'week'), '11/9~15');
+  assert.equal(periodLabel(kst('2026-10-26T00:00:00'), 'week'), '10/26~11/1', '달이 바뀌는 주');
+  assert.equal(periodLabel(kst('2026-11-13T00:00:00'), 'day'), '11/13');
+  assert.equal(periodStart(kst('2026-11-13T15:30:00'), 'day'), kst('2026-11-13T00:00:00'));
+  assert.equal(shiftPeriod(kst('2026-11-01T00:00:00'), 'day', -1), kst('2026-10-31T00:00:00'));
   assert.equal(periodLabel(kst('2026-11-01T00:00:00'), 'month'), '11월');
   assert.equal(periodLabel(kst('2026-01-01T00:00:00'), 'year'), '2026');
   assert.throws(() => periodStart(now, 'decade'));
@@ -184,4 +188,11 @@ test('video-export: 확장자·미지원 환경 판별', async () => {
   const arc = calls.find((c) => c[0] === 'arc');
   assert.deepEqual(arc.slice(1, 3), [200, 100], '화면 좌표를 출력 해상도로 확대');
   assert.ok(calls.some((c) => c[0] === 'fillText' && String(c[1]).includes('OpenStreetMap')));
+});
+
+test('aggregate: 일 단위 — 어제 기록은 어제 칸에 (이번 주 전체에 묻히지 않음)', () => {
+  const list = [act('y', '2026-11-13T13:07:00', { distance: 314 })];
+  const days = aggregate(list, 'day', 14, kst('2026-11-14T10:00:00'));
+  assert.equal(days.length, 14);
+  assert.deepEqual(days.slice(-2).map((d) => [d.label, d.count, d.distance]), [['11/13', 1, 314], ['11/14', 0, 0]]);
 });

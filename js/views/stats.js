@@ -8,6 +8,7 @@ import { formatDistance, formatDuration, formatElevation, formatSpeed, formatDat
 Chart.register(...registerables);
 
 const UNITS = Object.freeze({
+  day: { label: '일', count: 14 },
   week: { label: '주', count: 12 },
   month: { label: '월', count: 12 },
   year: { label: '연', count: 5 },
@@ -37,7 +38,7 @@ function summaryCards(t) {
 }
 
 export async function render(root) {
-  const state = { unit: 'week', metric: 'distance', type: 'all' };
+  const state = { unit: 'day', metric: 'distance', type: 'all' };
   let all = [];
   let chart = null;
 
@@ -79,6 +80,7 @@ export async function render(root) {
         ? Object.values(ACTIVITY_TYPES)
             .filter((t) => list.some((a) => a.type === t.id))
             .map((t) => ({ type: t, buckets: aggregate(list.filter((a) => a.type === t.id), state.unit, unit.count) }))
+            .filter((x) => x.buckets.some((b) => b.count > 0)) // 보이는 기간에 기록이 있는 종류만
         : [{ type: ACTIVITY_TYPES[state.type], buckets }];
     const stacked = series.length > 1;
     chart?.destroy();
@@ -88,7 +90,9 @@ export async function render(root) {
         labels: buckets.map((b) => b.label),
         datasets: series.map((s) => ({
           label: `${s.type.icon} ${s.type.label}`,
-          data: s.buckets.map(metric.toValue),
+          // 기록이 없는 칸은 null (최소 높이가 0 칸에 적용되지 않도록)
+          data: s.buckets.map((b) => (b.count > 0 ? metric.toValue(b) : null)),
+          minBarLength: 4, // 짧은 기록도 막대가 보이도록
           counts: s.buckets.map((b) => b.count),
           backgroundColor: s.type.color,
           borderRadius: stacked ? 0 : 6,
@@ -130,7 +134,7 @@ export async function render(root) {
     const buckets = aggregate(list, state.unit, UNITS[state.unit].count);
     drawChart(list, buckets);
     const cur = buckets.at(-1);
-    const unitName = { week: '이번 주', month: '이번 달', year: '올해' }[state.unit];
+    const unitName = { day: '오늘', week: '이번 주', month: '이번 달', year: '올해' }[state.unit];
     $('current').textContent = `${unitName}: ${cur.count}회 · ${formatDistance(cur.distance)} · ${formatDuration(Math.round(cur.time))}`;
     $('totals').innerHTML = summaryCards(totals(list));
     $('typeNote').textContent = '';
