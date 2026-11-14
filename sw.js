@@ -1,6 +1,6 @@
 // 길담 서비스 워커: 앱 셸·라이브러리 사전 캐시 + 지도 타일 런타임 캐시
 // 앱 파일을 바꾸면 VERSION 을 올려야 사용자에게 새 버전이 반영됨 (tests/pwa.test.js 가 목록 누락을 검사)
-const VERSION = 'v3.1.0';
+const VERSION = 'v3.2.0';
 const SHELL_CACHE = `gildam-shell-${VERSION}`;
 const CDN_CACHE = `gildam-cdn-${VERSION}`;
 const TILE_CACHE = 'gildam-tiles';

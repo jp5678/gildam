@@ -42,7 +42,16 @@ export function pickFiles({ accept, multiple = false, capture = null }) {
     input.accept = accept;
     input.multiple = multiple;
     if (capture) input.setAttribute('capture', capture);
-    input.addEventListener('change', () => resolve(Array.from(input.files ?? [])), { once: true });
+    // 문서에 붙이지 않으면 iOS Safari 등에서 change 이벤트가 오지 않는 경우가 있음
+    input.hidden = true;
+    input.style.display = 'none';
+    document.body.append(input);
+    const done = (files) => {
+      input.remove();
+      resolve(files);
+    };
+    input.addEventListener('change', () => done(Array.from(input.files ?? [])), { once: true });
+    input.addEventListener('cancel', () => done([]), { once: true });
     input.click();
   });
 }

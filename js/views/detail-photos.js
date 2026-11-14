@@ -95,8 +95,26 @@ export async function mountPhotoSection(el, getActivity, onChange) {
         progress.textContent = `사진 처리 중… ${i}/${n}`;
       });
       progress.hidden = true;
-      failed.forEach((f) => toast(`${f.name}: ${f.reason}`, { type: 'error', duration: 6000 }));
-      if (saved.length) toast(`사진 ${saved.length}장을 경로에 배치했습니다.`);
+      let placed = saved.length;
+      const placeable = failed.filter((f) => f.placeable);
+      const broken = failed.filter((f) => !f.placeable);
+      if (placeable.length) {
+        // 휴대폰 브라우저는 갤러리 사진의 위치 정보를 지우는 경우가 많아 자동 배치에 실패할 수 있음
+        const reasons = [...new Set(placeable.map((f) => f.reason))].map((r) => `· ${r}`).join('\n');
+        const ok = await confirmDialog(
+          `사진 ${placeable.length}장은 경로 위치를 찾지 못했습니다.\n${reasons}\n\n촬영 시각에 가장 가까운 지점(시각 정보가 없으면 도착 지점)에 놓을까요?`,
+        );
+        if (ok) {
+          const retry = await addPhotos(getActivity(), placeable.map((f) => f.file), () => {}, { force: true });
+          placed += retry.saved.length;
+          broken.push(...retry.failed);
+        }
+      }
+      if (broken.length) {
+        const first = broken[0];
+        toast(`${broken.length}장을 추가하지 못했습니다 — ${first.name}: ${first.reason}`, { type: 'error', duration: 7000 });
+      }
+      if (placed) toast(`사진 ${placed}장을 추가했습니다.${broken.length ? ` (${broken.length}장 실패)` : ''}`);
       await reload();
     }
   });

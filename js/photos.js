@@ -67,12 +67,17 @@ async function storeImage(file, fields) {
   }
 }
 
-async function processOne(file, activity) {
+async function processOne(file, activity, force) {
   validateImageFile(file);
   const meta = await readPhotoMeta(file);
   const match = matchPhoto(meta, activity.points);
-  if (!match.ok) throw new PhotoError(match.reason);
-  return storeImage(file, { activityId: activity.id, lat: meta.lat, lon: meta.lon, time: meta.time, index: match.index, method: match.method });
+  if (match.ok) {
+    return storeImage(file, { activityId: activity.id, lat: meta.lat, lon: meta.lon, time: meta.time, index: match.index, method: match.method });
+  }
+  if (!force) throw new PhotoError(match.reason);
+  // 사용자가 확인한 경우: 가장 가까운 시각 지점(시각이 없으면 도착 지점)에 '직접 지정'으로 배치
+  const { index } = placeLivePhoto(meta, activity.points);
+  return storeImage(file, { activityId: activity.id, lat: meta.lat, lon: meta.lon, time: meta.time, index, method: 'manual' });
 }
 
 /**
@@ -119,7 +124,7 @@ export async function discardDraftPhotos() {
  * 여러 사진 추가 (메모리 절약을 위해 순차 처리)
  * @returns {Promise<{ saved: object[], failed: { name: string, reason: string }[] }>}
  */
-export async function addPhotos(activity, files, onProgress = () => {}) {
+export async function addPhotos(activity, files, onProgress = () => {}, { force = false } = {}) {
   const list = Array.from(files);
   if (list.length > MAX_FILES_PER_UPLOAD) {
     return { saved: [], failed: [{ name: `${list.length}장`, reason: `한 번에 최대 ${MAX_FILES_PER_UPLOAD}장까지 올릴 수 있습니다.` }] };
@@ -129,9 +134,11 @@ export async function addPhotos(activity, files, onProgress = () => {}) {
   for (const [i, file] of list.entries()) {
     onProgress(i + 1, list.length);
     try {
-      saved.push(await processOne(file, activity));
+      saved.push(await processOne(file, activity, force));
     } catch (err) {
-      failed.push({ name: file.name, reason: err instanceof PhotoError ? err.message : `처리 실패 (${err?.message ?? err})` });
+      // placeable: 위치만 못 찾은 경우(직접 지정으로 다시 추가 가능). 형식·용량 오류는 제외
+      const placeable = err instanceof PhotoError && !/이미지|형식|너무 큽/.test(err.message);
+      failed.push({ name: file.name, file, placeable, reason: err instanceof PhotoError ? err.message : `처리 실패 (${err?.message ?? err})` });
     }
   }
   return { saved, failed };

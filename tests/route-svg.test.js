@@ -30,3 +30,18 @@ test('routeSvg: 색상 피처와 시작/종료 원', () => {
   assert.equal((svg.match(/<circle/g) ?? []).length, 2);
   assert.equal(routeSvg([pts[0]]), '');
 });
+
+test('routeSvg: 사진 썸네일 마커 (지점 위치, 속성 이스케이프, 범위 밖 인덱스 보정)', () => {
+  const svg = routeSvg(pts, {
+    photos: [
+      { id: 'p1', index: 1, thumb: 'blob:http://x/abc' },
+      { id: 'p"2', index: 99, thumb: 'blob:http://x/def' },
+    ],
+  });
+  assert.equal((svg.match(/class="svg-photo"/g) ?? []).length, 2);
+  assert.ok(svg.includes('data-photo-id="p1"'));
+  assert.ok(svg.includes('data-photo-id="p&quot;2"'), '따옴표 이스케이프');
+  assert.ok(svg.includes('href="blob:http://x/abc"'));
+  assert.ok(svg.includes('role="group"'));
+  assert.ok(routeSvg(pts).includes('role="img"'));
+});

@@ -348,3 +348,9 @@ button.cal-cell { cursor: pointer; }
 /* 캘린더 주말 색 (기록 없는 날에만, 기록 있는 날은 히트맵 색 유지) */
 .cal-wd.sun, .cal-cell.lv0.sun { color: #d23f31; }
 .cal-wd.sat, .cal-cell.lv0.sat { color: #2f6fd8; }
+
+/* 대체 지도의 사진 썸네일 */
+.svg-photo { cursor: zoom-in; }
+.svg-photo:focus { outline: none; }
+.svg-photo:focus-visible rect { stroke: var(--green-500); stroke-width: 4; }
+.route-svg image { pointer-events: none; }

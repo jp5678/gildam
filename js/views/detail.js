@@ -146,14 +146,28 @@ export async function render(root, { params, navigate }) {
   let removeMarkers = null;
   let removePhotoMarkers = null;
   let photoState = { photos: [], urls: null };
+  let fallbackError = null; // WebGL 이 없어 SVG 대체 지도를 쓰는 경우 그 사유
+
+  const openPhoto = (photo) => openLightbox(photoState.urls.get(photo.id).full, photoCaption(photo, activity.points));
+
+  // WebGL 이 없으면 배경 지도 없이 SVG 경로 + 사진 썸네일로 표시
+  function drawFallbackMap() {
+    const { geojson, thresholds } = speedColoredFeatures(activity.points);
+    const photos = photoState.urls ? photoState.photos.map((p) => ({ id: p.id, index: p.index, thumb: photoState.urls.get(p.id).thumb })) : [];
+    $('map').classList.add('map-fallback');
+    $('map').innerHTML = `${routeSvg(activity.points, { features: geojson.features, photos })}
+      <p class="map-fallback-note">${fmt.esc(fallbackError)}</p>`;
+    $('legend').innerHTML = speedLegend(thresholds)
+      .map((l) => `<span><i style="background:${l.color}"></i>${l.label}</span>`)
+      .join('');
+  }
 
   function drawPhotoMarkers() {
     removePhotoMarkers?.();
     removePhotoMarkers = null;
+    if (fallbackError) return drawFallbackMap();
     if (!map || !photoState.urls || photoState.photos.length === 0) return;
-    removePhotoMarkers = addPhotoMarkers(map, photoState.photos, activity.points, photoState.urls, (photo) =>
-      openLightbox(photoState.urls.get(photo.id).full, photoCaption(photo, activity.points)),
-    );
+    removePhotoMarkers = addPhotoMarkers(map, photoState.photos, activity.points, photoState.urls, openPhoto);
   }
 
   const photoSection = mountPhotoSection($('photos'), () => activity, (photos, urls) => {
@@ -176,15 +190,19 @@ export async function render(root, { params, navigate }) {
         .join('');
     })
     .catch((err) => {
-      // WebGL 이 없으면 배경 지도 없이 SVG 경로만 표시
-      const { geojson, thresholds } = speedColoredFeatures(activity.points);
-      $('map').classList.add('map-fallback');
-      $('map').innerHTML = `${routeSvg(activity.points, { features: geojson.features })}
-        <p class="map-fallback-note">${fmt.esc(err.message)}</p>`;
-      $('legend').innerHTML = speedLegend(thresholds)
-        .map((l) => `<span><i style="background:${l.color}"></i>${l.label}</span>`)
-        .join('');
+      fallbackError = err.message;
+      drawFallbackMap();
     });
+
+  // 대체 지도의 사진 썸네일 클릭·키보드
+  const onFallbackPhoto = (e) => {
+    if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+    const g = e.target.closest?.('.svg-photo');
+    const photo = g && photoState.photos.find((p) => p.id === g.dataset.photoId);
+    if (photo) openPhoto(photo);
+  };
+  $('map').addEventListener('click', onFallbackPhoto);
+  $('map').addEventListener('keydown', onFallbackPhoto);
 
   async function persist(patch) {
     activity = updateActivity(activity, patch, loadSettings().weightKg);
