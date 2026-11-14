@@ -18,9 +18,6 @@ export function getType(id) {
 /** 페이스 대신 속도로 표시하는 종류인지 (자전거·자동차) */
 export const usesSpeed = (id) => getType(id).speedBased;
 
-/** 운동 활동만 (자동차 제외) */
-export const exerciseOnly = (activities) => activities.filter((a) => getType(a.type).exercise);
-
 // GPX/TCX 의 type/sport 문자열 → 내부 종류
 export function normalizeType(raw) {
   const s = String(raw ?? '').toLowerCase();

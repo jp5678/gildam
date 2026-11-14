@@ -8,12 +8,13 @@ import { formatDistance, formatDuration, formatDateTime, formatPace, formatSpeed
 import { toast, pickFiles } from '../ui.js';
 
 // 종류별 샘플 (scripts/make-samples.mjs 로 생성한 합성 경로)
+// daysAgo: 불러올 때 날짜를 오늘로부터 며칠 전으로 옮김 (시각은 유지) — 통계 '일' 보기에 바로 보이도록
 const SAMPLES = Object.freeze([
-  { path: 'sample/walking-olympicpark.gpx', label: '🚶 걷기' },
-  { path: 'sample/running-hangang.gpx', label: '🏃 달리기' },
-  { path: 'sample/biking-olympicpark.gpx', label: '🚴 자전거' },
-  { path: 'sample/hiking-bukhansan.gpx', label: '⛰️ 등산' },
-  { path: 'sample/driving-downtown.gpx', label: '🚗 자동차' },
+  { path: 'sample/walking-olympicpark.gpx', label: '🚶 걷기', daysAgo: 1 },
+  { path: 'sample/running-hangang.gpx', label: '🏃 달리기', daysAgo: 2 },
+  { path: 'sample/biking-olympicpark.gpx', label: '🚴 자전거', daysAgo: 5 },
+  { path: 'sample/hiking-bukhansan.gpx', label: '⛰️ 등산', daysAgo: 6 },
+  { path: 'sample/driving-downtown.gpx', label: '🚗 자동차', daysAgo: 3 },
 ]);
 
 const sampleButtons = () =>
@@ -144,7 +145,8 @@ export async function render(root, { navigate }) {
     const sample = e.target.closest('[data-sample]');
     if (sample) {
       try {
-        const a = await importSample(sample.dataset.sample);
+        const def = SAMPLES.find((s) => s.path === sample.dataset.sample);
+        const a = await importSample(sample.dataset.sample, { daysAgo: def?.daysAgo ?? null });
         navigate(`#/activity/${a.id}`);
       } catch (err) {
         toast(err?.message ?? String(err), { type: 'error' });

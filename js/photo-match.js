@@ -90,6 +90,8 @@ export function placeLivePhoto(photo, points) {
   return { index: Math.max(0, points.length - 1), method: 'time' };
 }
 
+// activity.js 의 SAFE_ID 와 같은 규칙 (photo-match 는 다른 모듈에 의존하지 않도록 따로 둠)
+const SAFE_ID = /^[A-Za-z0-9_:-]{1,64}$/;
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 const isNumOrNull = (v) => v === null || isNum(v);
 
@@ -99,9 +101,9 @@ export function isValidPhotoRecord(p) {
     p != null &&
     typeof p === 'object' &&
     typeof p.id === 'string' &&
-    p.id.length > 0 &&
-    p.id.length <= 64 &&
+    SAFE_ID.test(p.id) &&
     typeof p.activityId === 'string' &&
+    SAFE_ID.test(p.activityId) &&
     Number.isInteger(p.index) &&
     p.index >= 0 &&
     ['gps', 'time', 'manual'].includes(p.method) &&

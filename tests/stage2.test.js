@@ -98,6 +98,8 @@ test('isValidPhotoRecord', () => {
   assert.equal(isValidPhotoRecord({ ...ok, method: 'magic' }), false);
   assert.equal(isValidPhotoRecord({ ...ok, blob: 42 }), false);
   assert.equal(isValidPhotoRecord(null), false);
+  assert.equal(isValidPhotoRecord({ ...ok, id: "p1' onclick='x" }), false, '위험한 id 거부');
+  assert.equal(isValidPhotoRecord({ ...ok, activityId: '<a>' }), false);
 });
 
 test('placeLivePhoto: 기록 중 사진은 항상 경로 위에 배치', () => {

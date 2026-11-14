@@ -22,9 +22,6 @@ const OSM_STYLE = Object.freeze({
   layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
 });
 
-export function hasMapTilerKey() {
-  return loadSettings().maptilerKey.length > 0;
-}
 
 function styleUrl() {
   const key = loadSettings().maptilerKey;

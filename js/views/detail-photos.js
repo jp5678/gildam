@@ -54,9 +54,9 @@ export async function mountPhotoSection(el, getActivity, onChange) {
       ? photos
           .map(
             (p) => `<figure class="photo-item">
-              <button class="photo-thumb" data-open="${p.id}" style="background-image:url('${urls.get(p.id).thumb}')" aria-label="사진 크게 보기"></button>
+              <button class="photo-thumb" data-open="${esc(p.id)}" style="background-image:url('${urls.get(p.id).thumb}')" aria-label="사진 크게 보기"></button>
               <figcaption>${esc(photoCaption(p, getActivity().points, cum))}</figcaption>
-              <button class="photo-del" data-del="${p.id}" aria-label="사진 삭제">✕</button>
+              <button class="photo-del" data-del="${esc(p.id)}" aria-label="사진 삭제">✕</button>
             </figure>`,
           )
           .join('')

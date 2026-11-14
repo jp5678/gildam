@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildActivity, updateActivity, isValidActivity } from '../js/activity.js';
-import { normalizeType, guessType, getType, usesSpeed, exerciseOnly } from '../js/activity-types.js';
+import { normalizeType, guessType, getType, usesSpeed } from '../js/activity-types.js';
 import { formatDistance, formatDuration, formatPace, formatSpeed, esc, defaultActivityName } from '../js/format.js';
 import { toGpx, escapeXml } from '../js/gpx.js';
 
@@ -57,6 +57,10 @@ test('isValidActivity', () => {
   assert.equal(isValidActivity({ ...a, type: 'swim' }), false);
   assert.equal(isValidActivity({ ...a, points: [{ lat: 100, lon: 0 }, { lat: 0, lon: 0 }] }), false);
   assert.equal(isValidActivity(null), false);
+  // 백업 복원: HTML·URL 에 들어갈 수 있는 위험한 id, 잘못된 지점 형식 거부
+  assert.equal(isValidActivity({ ...a, id: 'x" onerror="alert(1)' }), false);
+  assert.equal(isValidActivity({ ...a, id: '' }), false);
+  assert.equal(isValidActivity({ ...a, points: a.points.map((p) => ({ ...p, time: '2026-01-01' })) }), false);
 });
 
 test('normalizeType / guessType / getType', () => {
@@ -80,7 +84,6 @@ test('자동차 종류', () => {
   assert.equal(usesSpeed('car'), true);
   assert.equal(usesSpeed('bike'), true);
   assert.equal(usesSpeed('run'), false);
-  assert.deepEqual(exerciseOnly([{ type: 'car' }, { type: 'walk' }]).map((a) => a.type), ['walk']);
   const a = buildActivity({ id: 'c1', now: T0, points: track(30, { stepDeg: 0.002, dtSec: 5 }), type: 'car', source: 'gps', weightKg: 60 });
   assert.equal(a.stats.calories, 0);
   assert.equal(isValidActivity(a), true);

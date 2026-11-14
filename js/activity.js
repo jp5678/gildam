@@ -60,6 +60,23 @@ export function updateActivity(activity, { type, name }, weightKg) {
 }
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+const isNumOrNull = (v) => v == null || isNum(v);
+
+/** 저장소 id 로 허용하는 형식 (HTML 속성·URL 에 그대로 써도 안전한 문자만) */
+export const SAFE_ID = /^[A-Za-z0-9_:-]{1,64}$/;
+
+function isValidPoint(p) {
+  return (
+    p != null &&
+    isNum(p.lat) &&
+    isNum(p.lon) &&
+    Math.abs(p.lat) <= 90 &&
+    Math.abs(p.lon) <= 180 &&
+    isNumOrNull(p.ele) &&
+    isNumOrNull(p.time) &&
+    (p.seg == null || Number.isInteger(p.seg))
+  );
+}
 
 /** 백업 복원 시 외부 데이터 검증 */
 export function isValidActivity(a) {
@@ -67,14 +84,13 @@ export function isValidActivity(a) {
     a != null &&
     typeof a === 'object' &&
     typeof a.id === 'string' &&
-    a.id.length > 0 &&
-    a.id.length <= 64 &&
+    SAFE_ID.test(a.id) &&
     TYPE_IDS.includes(a.type) &&
     typeof a.name === 'string' &&
     isNum(a.startTime) &&
     Array.isArray(a.points) &&
     a.points.length >= 2 &&
-    a.points.every((p) => p && isNum(p.lat) && isNum(p.lon) && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180) &&
+    a.points.every(isValidPoint) &&
     a.stats != null &&
     typeof a.stats === 'object'
   );

@@ -61,8 +61,3 @@ export function safeFileName(name) {
   return String(name).replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'activity';
 }
 
-export function h(html) {
-  const tpl = document.createElement('template');
-  tpl.innerHTML = html.trim();
-  return tpl.content.firstElementChild;
-}

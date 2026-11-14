@@ -69,7 +69,10 @@ async function storeImage(file, fields) {
 
 async function processOne(file, activity, force) {
   validateImageFile(file);
-  const meta = await readPhotoMeta(file);
+  const raw = await readPhotoMeta(file);
+  // 날짜를 옮긴 샘플 활동이면 사진 촬영 시각도 같은 만큼 옮겨 비교 (저장값도 옮긴 시각)
+  const shift = Number.isFinite(activity.sampleShiftMs) ? activity.sampleShiftMs : 0;
+  const meta = shift && raw.time != null ? { ...raw, time: raw.time + shift } : raw;
   const match = matchPhoto(meta, activity.points);
   if (match.ok) {
     return storeImage(file, { activityId: activity.id, lat: meta.lat, lon: meta.lon, time: meta.time, index: match.index, method: match.method });

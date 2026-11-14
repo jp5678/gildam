@@ -196,3 +196,18 @@ test('aggregate: 일 단위 — 어제 기록은 어제 칸에 (이번 주 전�
   assert.equal(days.length, 14);
   assert.deepEqual(days.slice(-2).map((d) => [d.label, d.count, d.distance]), [['11/13', 1, 314], ['11/14', 0, 0]]);
 });
+
+test('recentShiftMs / shiftPoints: 날짜만 최근으로, 시각 유지, 미래 금지', async () => {
+  const { recentShiftMs, shiftPoints } = await import('../js/sample-shift.js');
+  const now = kst('2026-11-14T10:00:00');
+  const first = kst('2026-10-11T08:30:00');
+  const last = kst('2026-10-11T11:20:00');
+  const shift = recentShiftMs(first, last, 6, now);
+  assert.equal(new Date(first + shift).toISOString(), new Date(kst('2026-11-08T08:30:00')).toISOString(), '6일 전 같은 시각');
+  // 1일 전이 미래가 되는 경우(자정 넘김): 어제 23:00~오늘 01:00 활동을 now=00:30 에 불러오면 하루 더 앞당김
+  const late = recentShiftMs(kst('2026-10-11T23:00:00'), kst('2026-10-12T01:00:00'), 1, kst('2026-11-14T00:30:00'));
+  assert.ok(kst('2026-10-12T01:00:00') + late <= kst('2026-11-14T00:30:00'));
+  assert.equal(new Date(kst('2026-10-11T23:00:00') + late).getDate(), 12, '이틀 전 23시로');
+  const pts = shiftPoints([{ time: 1000, lat: 0 }, { time: null, lat: 1 }], 500);
+  assert.deepEqual(pts, [{ time: 1500, lat: 0 }, { time: null, lat: 1 }]);
+});
